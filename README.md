@@ -1,14 +1,18 @@
 # Flood Data Ecosystem 
-The repository contains codes to extract relevant datasets and the modelling approach used to calculate Risk Scores for any state in India at the district and subdistrict levels.
-
-
 Data that could enable more effective disaster-risk response and management is scattered or siloed across different agencies, at different scales and formats, making it difficult for decision-makers and relevant stakeholders to make data-informed decisions. The availability of good quality, machine-readable, and interoperable data is crucial for effective climate action and disaster response. However, in India, this data is fragmented and siloed, scattered across different agencies, making it difficult for decision-makers to make data-informed decisions in a timely manner.
 
-This repository contains scripts to extract data for . Our solution leverages advanced data science techniques to derive insights for decision makers and make it into a user-friendly, interactive open-access tool.
-
+The repository contains codes to extract datasets relevant for flood risk analysis for any state in India at the district and subdistrict levels.
 
 ## Directory Tree:
-1. [Sources](https://github.com/CivicDataLab/flood-data-ecosystem-Odisha/tree/main/Sources): Contains all data sources along with the scripts used to obtain data from these sources. 
+1. [Sources](): Contains all data sources along with the scripts used to obtain data from these sources. 
+2. [Maps](): Contains all data sources along with the scripts used to extract the shapefiles for the data analysis. 
+1. [Analysis](): Contains jupiter notebooks and scripts to analyse the extracted data and run data quality tests. 
+
+---
+
+
+If you want to contribute to the data sources, research or have any doubts with the data, please contact us at info@civicdatalab.in
+
 
 ## License:
 All content in this repository is licensed under
@@ -16,20 +20,3 @@ All content in this repository is licensed under
 
 
 ---
-
-
-## Procurement Datasets
-
-The repository includes scripts to extract and process various datasets essential for modeling flood risk in Himachal Pradesh. Below are some key datasets:
-
-### Flood Procurement Data
-- **[Flood Tenders Data](https://github.com/CivicDataLab/flood-data-ecosystem-odisha/tree/main/Sources/TENDERS/data/flood_tenders)**:
-  - Contains procurement data related to flood activities in Himachal Pradesh for the financial years 2019 to 2024.
-
-- **[Monthly Procurement Data](https://github.com/CivicDataLab/flood-data-ecosystem-odisha/tree/main/Sources/TENDERS/data/monthly_tenders)**:
-  - Contains monthly procurement data for Himachal Pradesh from FY 2019 to 2024.
-
----
-
-
-If you want to contribute to the data sources, research or have any doubts with the data, please contact us at info@civicdatalab.in
