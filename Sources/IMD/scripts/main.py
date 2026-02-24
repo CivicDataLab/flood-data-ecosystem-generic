@@ -14,11 +14,17 @@ from rasterio.transform import Affine
 path = os.getcwd()
 
 CURRENT_FOLDER = os.path.dirname(os.path.abspath(__file__))
-DATA_FOLDER = os.path.abspath(CURRENT_FOLDER + "/../" + "data")
+DATA_FOLDER = os.path.abspath(os.path.join(CURRENT_FOLDER, "..", "data"))
 TIFF_DATA_FOLDER = os.path.join(DATA_FOLDER, "rain", "tiff")
 CSV_DATA_FOLDER = os.path.join(DATA_FOLDER, "rain", "csv")
 
-ADMIN_BDRY_GDF = gpd.read_file(path + "<administrative_boundary_shapefile_path>")
+# Fixed: removed leading slash and added glob pattern
+import glob
+geojson_files = glob.glob(os.path.join(path, "Maps/Geojson/*_subdistricts.geojson"))
+if not geojson_files:
+    print("Error: No subdistrict GeoJSON files found!")
+    sys.exit(1)
+ADMIN_BDRY_GDF = gpd.read_file(geojson_files[0])
 
 
 def download_data(year: int, start_date: str, end_date: str):
@@ -26,7 +32,7 @@ def download_data(year: int, start_date: str, end_date: str):
     Download year wise data in the DATA_FOLDER
     The year wise data has datapoint for all days of all months
     """
-    current_year = datetime.now().year
+    current_year = datetime.now().year 
     if year == current_year:
         imd.get_real_data(
             var_type="rain",
@@ -76,28 +82,29 @@ def transform_resample_monthly_tif_filenames(tif_filename: str):
 
         raster.transform = new_transform
 
-    meta = raster.meta
-    meta["transform"] = raster.transform
+        meta = raster.meta
+        meta["transform"] = raster.transform
+
+    # Flip the data vertically
     reversed_data = np.flipud(raster_array)
 
-    with rasterio.open(
-        tif_filename.replace(".tif", "_flipped.tif"), "w", **meta
-    ) as dst:
+    # Save flipped version
+    flipped_filename = tif_filename.replace(".tif", "_flipped.tif")
+    with rasterio.open(flipped_filename, "w", **meta) as dst:
         dst.write(reversed_data, 1)
 
+    # Resample using gdalwarp
+    resampled_filename = tif_filename.replace(".tif", "_resampled.tif")
     os.system(
-        """gdalwarp -tr 0.01 -0.01 -r sum {} {} -co COMPRESS=DEFLATE""".format(
-            tif_filename.replace(".tif", "_flipped.tif"),
-            tif_filename.replace(".tif", "_resampled.tif"),
-        )
+        f'gdalwarp -tr 0.01 -0.01 -r sum "{flipped_filename}" "{resampled_filename}" -co COMPRESS=DEFLATE'
     )
 
-    # Divide each pixel by 625 to maintain overall sum_rainfall (625 small pixels = 1 big pixel based on our ts and tr)
+    # Divide each pixel by 625 to maintain overall sum_rainfall 
+    # (625 small pixels = 1 big pixel based on resolution change from 0.25 to 0.01)
+    resampled2_filename = tif_filename.replace(".tif", "_resampled2.tif")
     os.system(
-        '''gdal_calc.py -A {} --outfile {} --calc="A/625" --NoDataValue=-999 --creation-option="COMPRESS=DEFLATE"'''.format(
-            tif_filename.replace(".tif", "_resampled.tif"),
-            tif_filename.replace(".tif", "_resampled2.tif"),
-        )
+        f'gdal_calc.py -A "{resampled_filename}" --outfile "{resampled2_filename}" '
+        f'--calc="A/625" --NoDataValue=-999 --creation-option="COMPRESS=DEFLATE"'
     )
 
 
@@ -135,51 +142,39 @@ def parse_and_format_data(year: int, start_date: str, end_date: str):
     # For each month in the dataset, save the total rain in tif format
     for el in dataset:
         month = el[1]["time.month"].to_dict()["data"][0]
-        if month < 10:
-            month_wise_tif_filename = TIFF_DATA_FOLDER + "/{}_0{}.tif".format(
-                year, month
-            )
-        else:
-            month_wise_tif_filename = TIFF_DATA_FOLDER + "/{}_{}.tif".format(
-                year, month
-            )
+        month_str = f"{month:02d}"  # Format with leading zero
+        
+        month_wise_tif_filename = os.path.join(
+            TIFF_DATA_FOLDER, f"{year}_{month_str}.tif"
+        )
 
         el[1]["rain"].sum("time").rio.to_raster(month_wise_tif_filename)
 
         transform_resample_monthly_tif_filenames(month_wise_tif_filename)
 
     # Save yearwise file as geotiff, this is used in getting crs
-    data.to_geotiff("{}.tif".format(year), TIFF_DATA_FOLDER)
+    data.to_geotiff(f"{year}.tif", TIFF_DATA_FOLDER)
 
     return None
 
 
-def retrieve_assam_revenue_circle_data(year: int):
+def retrieve_state_subdistrict_data(year: int):
     """
-    Retrives assam revenue circle data from the year wise .tif file
+    Retrieves data from the year wise .tif file
     """
     for month in [
-        "01",
-        "02",
-        "03",
-        "04",
-        "05",
-        "06",
-        "07",
-        "08",
-        "09",
-        "10",
-        "11",
-        "12",
+        "01", "02", "03", "04", "05", "06",
+        "07", "08", "09", "10", "11", "12"
     ]:
-        month_and_year_filename = "{}_{}".format(str(year), str(month))
+        month_and_year_filename = f"{year}_{month}"
+        
+        tif_path = os.path.join(
+            TIFF_DATA_FOLDER,
+            f"{month_and_year_filename}_resampled.tif"
+        )
+        
         try:
-            raster = rasterio.open(
-                os.path.join(
-                    TIFF_DATA_FOLDER,
-                    "{}_resampled2.tif".format(month_and_year_filename),
-                )
-            )
+            raster = rasterio.open(tif_path)
             print(f"Processing for {month_and_year_filename}")
         except rasterio.errors.RasterioIOError:
             print(f"Skipping for {month_and_year_filename} - File Not Found!!")
@@ -197,31 +192,39 @@ def retrieve_assam_revenue_circle_data(year: int):
         )
 
         dfs = []
-
-        for revenue_circle in mean_dicts:
-            dfs.append(pd.DataFrame([revenue_circle["properties"]]))
+        for sub in mean_dicts:
+            dfs.append(pd.DataFrame([sub["properties"]]))
 
         zonal_stats_df = pd.concat(dfs).reset_index(drop=True)
 
         os.makedirs(CSV_DATA_FOLDER, exist_ok=True)
 
-        zonal_stats_df.to_csv(
-            CSV_DATA_FOLDER + "/{}.csv".format(month_and_year_filename), index=False
-        )
+        csv_path = os.path.join(CSV_DATA_FOLDER, f"{month_and_year_filename}.csv")
+        zonal_stats_df.to_csv(csv_path, index=False)
 
     return None
 
 
 if __name__ == "__main__":
-
     # Takes year as an input from the cli
-    year = str(sys.argv[1])
-    year = int(year)
+    year = int(input("Enter the year: "))
 
     # IF the year is current year, specify start and end date
-    start_date = "2024-01-01"
-    end_date = "2024-06-30"
+    now = datetime.now()
 
-    download_data(year, start_date=start_date, end_date=end_date)
-    parse_and_format_data(year, start_date=start_date, end_date=end_date)
-    retrieve_assam_revenue_circle_data(year)
+    if year == now.year:
+        start_date = input("Enter start date (YYYY-MM-DD): ")
+        end_date = input("Enter end date (YYYY-MM-DD): ")
+    else:
+        # For historical years, these will be ignored by the functions
+        start_date = f"{year}-01-01"
+        end_date = f"{year}-12-31"
+
+    try:
+        download_data(year, start_date=start_date, end_date=end_date)
+        parse_and_format_data(year, start_date=start_date, end_date=end_date)
+        retrieve_state_subdistrict_data(year)
+        print(f"\nProcessing completed successfully for year {year}")
+    except Exception as e:
+        print(f"\nError occurred: {str(e)}")
+        sys.exit(1)

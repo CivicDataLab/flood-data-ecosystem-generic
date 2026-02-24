@@ -1,10 +1,9 @@
 import pandas as pd
 import glob
 import os
-data_path = os.getcwd()+'/flood-data-ecosystem-Odisha/Sources/WORLDPOP/data/'
+data_path = os.getcwd()+'Sources/WORLDPOP/data'
 
-
-files = glob.glob(data_path+'worldpopstats_*.csv')
+files = glob.glob(os.path.join(data_path, 'worldpopstats_*.csv'))
 dfs = []
 for file in files:
     df = pd.read_csv(file)
