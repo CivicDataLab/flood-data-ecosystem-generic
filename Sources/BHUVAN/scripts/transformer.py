@@ -9,90 +9,78 @@ import pandas as pd
 import rasterio
 import rasterstats
 
+# Validate command-line arguments
 if len(sys.argv) < 3:
-    print("Please provide an input argument.")
-else:
-    print(sys.argv)
-    year = str(sys.argv[1])
-    month = str(sys.argv[2])
-    print("Month: ", year + month)
+    print("Usage: python script.py <year> <month>")
+    sys.exit(1)
+
+year = str(sys.argv[1])
+month = str(sys.argv[2])
+print(f"Processing: {year}-{month}")
 
 tic = time.perf_counter()
 path = os.getcwd() + "/Sources/BHUVAN/"
-assam_rc_gdf = gpd.read_file(
-    os.getcwd() + "/Maps/br-ids-drr_shapefile/Bihar_subdistrict_final_4326.geojson"
-)
 
-files1 = glob.glob(
-    path + "data/tiffs/removed_watermarks/" + year + "_??_" + month + "*.tif"
-)
-files2 = glob.glob(
-    path + "data/tiffs/removed_watermarks/" + year + "_??-??_" + month + "*.tif"
-)
+# Load geodata
+geojson_files = glob.glob(os.path.join(os.getcwd() + "/Maps/Geojson/*_subdistrict"))
+if not geojson_files:
+    print("Error: No subdistrict GeoJSON files found!")
+    sys.exit(1)
+assam_rc_gdf = gpd.read_file(geojson_files[0])
+
+# Find all matching TIFF files
+files1 = glob.glob(path + "data/tiffs/removed_watermarks/" + year + "_??_" + month + "*.tif")
+files2 = glob.glob(path + "data/tiffs/removed_watermarks/" + year + "_??-??_" + month + "*.tif")
 files = files1 + files2
-print("Number of maps available for the month: ", len(files))
 
-raster = rasterio.open(files[0])
-raster_array = raster.read(1).astype(np.int16)
+if not files:
+    print(f"Error: No files found for {year}-{month}")
+    sys.exit(1)
 
-# accumulate    
+print(f"Number of maps available for the month: {len(files)}")
+
+# Read first raster
+with rasterio.open(files[0]) as raster:
+    raster_array = raster.read(1).astype(np.int32)  # Changed to int32 to prevent overflow
+    meta = raster.meta.copy()
+    transform = raster.transform
+    crs = raster.crs
+
+# Accumulate remaining rasters
 for file in files[1:]:
-    arr = rasterio.open(file).read(1).astype(np.int16)
-    raster_array += arr
-    #raster_array = raster_array + rasterio.open(file).read(1)
+    with rasterio.open(file) as src:
+        arr = src.read(1).astype(np.int32)
+        raster_array += arr
 
-# SAVE THE STITCHED RASTER FOR THE MONTH
-meta = raster.meta
-meta["compress"] = "deflate"
-meta["count"] = 1  # Only one band.
-meta["dtype"] = "int8"
-meta["crs"] = raster.crs
-meta["transform"] = raster.transform
-meta["nodata"] = -1
-
-meta = raster.meta.copy()
+# Update metadata for output
 meta.update({
-    "compress":   "deflate",
-    "count":      1,
-    "dtype":      "int16",
-    "nodata":     -1,      # or whatever sentinel you choose
+    "compress": "deflate",
+    "count": 1,
+    "dtype": "int32",  # Match the array dtype
+    "nodata": -1,
 })
-with rasterio.open(
-    path + f"data/tiffs/stitched_monthly/stitched_{year}_{month}.tif",
-    "w", **meta
-) as dst:
+
+# Save stitched raster (SINGLE WRITE)
+output_path = path + f"data/tiffs/stitched_monthly/stitched_{year}_{month}.tif"
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+with rasterio.open(output_path, "w", **meta) as dst:
     dst.write(raster_array, 1)
 
-#with rasterio.open(
-#    path + f"data/tiffs/stitched_monthly/stitched_{year}_{month}.tif",
-#    "w", **meta
-#) as dst:
-#    dst.write(raster_array, 1)
-
-with rasterio.open(
-    path + "data/tiffs/stitched_monthly/stitched_{}_{}.tif".format(year, month),
-    "w",
-    **meta
-) as dst:
-    dst.write(raster_array, 1)
-
-
-# CALCULATE MODEL INPUTS
+# CALCULATE ZONAL STATISTICS
 def count_nonzero(x):
     return np.count_nonzero(x.compressed())
 
-
 mean_dicts = rasterstats.zonal_stats(
-    assam_rc_gdf.to_crs(raster.crs),
+    assam_rc_gdf.to_crs(crs),
     raster_array,
-    affine=raster.transform,
+    affine=transform,
     stats=["count"],
-    nodata=raster.nodata,
+    nodata=-1,
     add_stats={"count_nonzero": count_nonzero},
     geojson_out=True,
 )
 
-# Convert the dictionary items to a list and slice to get the last 5 items
 dfs = []
 for rc in mean_dicts:
     dfs.append(pd.DataFrame([rc["properties"]]))
@@ -102,22 +90,20 @@ zonal_stats_df["inundation_pct"] = (
     zonal_stats_df["count_nonzero"] / zonal_stats_df["count"]
 )
 
-# INTENSITY - maximum inundated pixel has INTENSITY 1
+# CALCULATE INTENSITY
 intensity_array = np.divide(raster_array, raster_array.max())
-
 
 def nonzero_mean(x):
     x = x.compressed()
     nonzero_values = x[x != 0]
-    return np.mean(nonzero_values)
-
+    return np.mean(nonzero_values) if len(nonzero_values) > 0 else 0
 
 mean_dicts = rasterstats.zonal_stats(
-    assam_rc_gdf.to_crs(raster.crs),
+    assam_rc_gdf.to_crs(crs),
     intensity_array,
-    affine=raster.transform,
+    affine=transform,
     stats=["mean", "sum"],
-    nodata=raster.nodata,
+    nodata=-1,
     add_stats={"intensity_mean_nonzero": nonzero_mean},
     geojson_out=True,
 )
@@ -127,30 +113,25 @@ for rc in mean_dicts:
     dfs.append(pd.DataFrame([rc["properties"]]))
 
 intensity_df = pd.concat(dfs).reset_index(drop=True)
-
 intensity_df.rename(
     columns={"mean": "intensity_mean", "sum": "intensity_sum"}, inplace=True
 )
 
 zonal_stats_df = pd.merge(
     zonal_stats_df,
-    intensity_df[
-        ["intensity_mean", "intensity_mean_nonzero", "intensity_sum", "object_id"]
-    ],
+    intensity_df[["intensity_mean", "intensity_mean_nonzero", "intensity_sum", "object_id"]],
     on="object_id",
 )
 
-zonal_stats_df = zonal_stats_df[
-    [
-        "object_id",
-        "count",
-        "count_nonzero",
-        "inundation_pct",
-        "intensity_mean",
-        "intensity_mean_nonzero",
-        "intensity_sum",
-    ]
-]
+zonal_stats_df = zonal_stats_df[[
+    "object_id",
+    "count",
+    "count_nonzero",
+    "inundation_pct",
+    "intensity_mean",
+    "intensity_mean_nonzero",
+    "intensity_sum",
+]]
 
 zonal_stats_df.columns = [
     "object_id",
@@ -162,29 +143,14 @@ zonal_stats_df.columns = [
     "inundation_intensity_sum",
 ]
 
-if os.path.exists(path + "data/variables/inundation_pct"):
-    zonal_stats_df.to_csv(
-        path
-        + "/data/variables/inundation_pct/"
-        + "inundation_pct_"
-        + year
-        + "_"
-        + month
-        + ".csv",
-        index=False,
-    )
-else:
-    os.mkdir(path + "data/variables/inundation_pct")
-    zonal_stats_df.to_csv(
-        path
-        + "/data/variables/inundation_pct/"
-        + "inundation_pct_"
-        + year
-        + "_"
-        + month
-        + ".csv",
-        index=False,
-    )
+# Save results
+output_dir = path + "data/variables/inundation_pct"
+os.makedirs(output_dir, exist_ok=True)
+
+zonal_stats_df.to_csv(
+    f"{output_dir}/inundation_pct_{year}_{month}.csv",
+    index=False,
+)
 
 toc = time.perf_counter()
-print("Time Taken: {} seconds".format(toc - tic))
+print(f"Time Taken: {toc - tic:.2f} seconds")

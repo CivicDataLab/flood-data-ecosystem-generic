@@ -7,8 +7,9 @@ cwd = os.getcwd()
 # print(cwd)
 path = os.getcwd() + "/Sources/BHUVAN/"
 script_path = cwd + "/Sources/BHUVAN/scripts/transformer.py"
+PY = input("\n Enter the path of your python interpreter:  ")
 print(path)
-for year in [2021,2022,2023,2024]:
+for year in [2021,2022,2023,2024]: #years that you want to run 
     print(year)
     year = str(year)
     for month in [
@@ -40,4 +41,4 @@ for year in [2021,2022,2023,2024]:
             continue
         else:
             print("Number of images:", len(files))
-            subprocess.call(["python3", script_path, year, month])
+            subprocess.call([PY, script_path, year, month]) # instead of the "python3" put the path the of the python complier you are using 

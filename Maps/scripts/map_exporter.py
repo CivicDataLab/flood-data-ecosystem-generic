@@ -4,6 +4,7 @@ Download NIC admin2024 boundaries for a given state and export as GeoJSON:
 - state.geojson
 - state_districts.geojson
 - states_subdistricts.geojson
+- states_villages.geojson
 
 Source service:
 https://webgis1.nic.in/nicstreet/rest/services/admin2024/MapServer/
@@ -11,11 +12,11 @@ Layers:
 - State Boundary: 9  (field: stname)
 - District boundary: 10
 - Subdistrict boundary: 11
+- Village boundary: 12
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import sys
@@ -30,10 +31,21 @@ except ImportError as e:
     raise SystemExit("Missing dependency: geopandas. Install with: pip install geopandas") from e
 
 
+# ============================================
+# CONFIGURATION - EDIT THESE VALUES
+# ============================================
+STATE_NAME = input("enter your state name :  ") 
+base_dir = os.getcwd()
+OUTPUT_DIR = os.path.join(base_dir,"/Maps/Geojson")
+# ============================================
+
+
 BASE_URL = "https://webgis1.nic.in/nicstreet/rest/services/admin2024/MapServer"
+
 STATE_LAYER = 9
 DISTRICT_LAYER = 10
 SUBDISTRICT_LAYER = 11
+VILLAGE_LAYER = 12 
 
 MAX_RECORD_COUNT = 2000  # service maxRecordCount is 2000
 
@@ -102,7 +114,7 @@ def arcgis_query_geojson(
         features = fc.get("features", [])
         all_features.extend(features)
 
-        # If fewer than max, we’re done
+        # If fewer than max, we're done
         if len(features) < MAX_RECORD_COUNT:
             break
 
@@ -143,47 +155,55 @@ def fetch_distinct_state_names(timeout: int = 60) -> List[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--state", required=True, help='State name, e.g. "Assam"')
-    parser.add_argument("--outdir", default=".", help="Output directory (default: current directory)")
-    args = parser.parse_args()
-
-    outdir = os.path.abspath(args.outdir)
+    # Use hardcoded values from configuration section
+    state_input = STATE_NAME.strip()
+    outdir = os.path.abspath(OUTPUT_DIR)
+    
+    # Create output directory if it doesn't exist
     os.makedirs(outdir, exist_ok=True)
+    
+    print(f"Downloading boundaries for: {state_input}")
+    print(f"Output directory: {outdir}")
+    print("-" * 50)
 
-    state_input = args.state.strip()
     if not state_input:
-        print("State cannot be empty.", file=sys.stderr)
+        print("ERROR: State name cannot be empty. Please edit STATE_NAME in the script.", file=sys.stderr)
         return 2
 
     # 1) Fetch the state polygon from layer 9 using stname
+    print("Fetching state boundary...")
     state_sql = f"UPPER(stname)=UPPER('{_escape_sql_string(state_input)}')"
     state_fc = arcgis_query_geojson(STATE_LAYER, where=state_sql)
 
     if not state_fc["features"]:
         # Helpful fallback: list valid names
+        print(f'ERROR: No match for state="{state_input}"', file=sys.stderr)
         try:
             valid = fetch_distinct_state_names()
-            print(f'No match for state="{state_input}". Valid values include:\n- ' + "\n- ".join(valid), file=sys.stderr)
+            print("Valid state names include:", file=sys.stderr)
+            for name in valid:
+                print(f"  - {name}", file=sys.stderr)
         except Exception:
-            print(f'No match for state="{state_input}". Also failed to fetch valid state names.', file=sys.stderr)
+            print("Also failed to fetch valid state names.", file=sys.stderr)
         return 1
 
     gdf_state = gpd.GeoDataFrame.from_features(state_fc, crs="EPSG:4326")
-    # If multiple (shouldn’t happen), dissolve into one
+    # If multiple (shouldn't happen), dissolve into one
     state_geom = gdf_state.unary_union
     gdf_state = gpd.GeoDataFrame(gdf_state.drop(columns="geometry", errors="ignore"), geometry=[state_geom], crs="EPSG:4326")
 
     # Export state
-    state_path = os.path.join(outdir, "state.geojson")
+    state_name_lower = state_input.lower().replace(" ", "_")
+    state_path = os.path.join(outdir, f"{state_name_lower}_state.geojson")
     gdf_state.to_file(state_path, driver="GeoJSON")
+    print(f"✓ Saved: {state_path}")
 
-    # 2) Use state bbox to query districts/subdistricts (limits server-side extraction),
-    #    then clip precisely to state polygon (limits final outputs).
+    # 2) Use state bbox to query districts/subdistricts/villages
     minx, miny, maxx, maxy = gdf_state.total_bounds
     bbox_str = f"{minx},{miny},{maxx},{maxy}"
 
     # Districts
+    print("Fetching districts...")
     dist_fc = arcgis_query_geojson(
         DISTRICT_LAYER,
         where="1=1",
@@ -195,10 +215,12 @@ def main() -> int:
     gdf_dist = gpd.GeoDataFrame.from_features(dist_fc, crs="EPSG:4326")
     if not gdf_dist.empty:
         gdf_dist = gpd.clip(gdf_dist, gdf_state)
-    dist_path = os.path.join(outdir, "state_districts.geojson")
+    dist_path = os.path.join(outdir, f"{state_name_lower}_districts.geojson")
     gdf_dist.to_file(dist_path, driver="GeoJSON")
+    print(f"✓ Saved: {dist_path}")
 
     # Subdistricts
+    print("Fetching subdistricts...")
     subdist_fc = arcgis_query_geojson(
         SUBDISTRICT_LAYER,
         where="1=1",
@@ -210,13 +232,33 @@ def main() -> int:
     gdf_subdist = gpd.GeoDataFrame.from_features(subdist_fc, crs="EPSG:4326")
     if not gdf_subdist.empty:
         gdf_subdist = gpd.clip(gdf_subdist, gdf_state)
-    subdist_path = os.path.join(outdir, "states_subdistricts.geojson")
+    subdist_path = os.path.join(outdir, f"{state_name_lower}_subdistricts.geojson")
     gdf_subdist.to_file(subdist_path, driver="GeoJSON")
+    print(f"✓ Saved: {subdist_path}")
 
-    print("Wrote:")
-    print(f"- {state_path}")
-    print(f"- {dist_path}")
-    print(f"- {subdist_path}")
+    # Villages
+    print("Fetching villages (this may take a while)...")
+    vil_fc = arcgis_query_geojson(
+        VILLAGE_LAYER,
+        where="1=1",
+        geometry=bbox_str,
+        geometry_type="esriGeometryEnvelope",
+        in_sr=4326,
+        out_sr=4326,      
+    )
+    gdf_vil = gpd.GeoDataFrame.from_features(vil_fc, crs="EPSG:4326")
+    if not gdf_vil.empty:
+        gdf_vil = gpd.clip(gdf_vil, gdf_state)
+    vil_path = os.path.join(outdir, f"{state_name_lower}_villages.geojson")
+    gdf_vil.to_file(vil_path, driver="GeoJSON")
+    print(f"✓ Saved: {vil_path}")
+
+    print("-" * 50)
+    print("SUCCESS! All files downloaded:")
+    print(f"  - {state_path}")
+    print(f"  - {dist_path}")
+    print(f"  - {subdist_path}")
+    print(f"  - {vil_path}")
     return 0
 
 
