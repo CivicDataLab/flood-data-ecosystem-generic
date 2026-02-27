@@ -39,26 +39,63 @@ project/
 │
 ├── Maps/
 │   └── Geojson/
-│       ├── <state>_subdistricts.geojson      # Revenue Circle polygons
-│       └── <state>_villages.geojson           # Village polygons (Bharat Maps)
-│
+│       ├── <state>_state.geojson       
 ├── Sources/
 │   ├── ANTYODAYA/
-│   │   └── data/                              # Created automatically by the scripts
+│   │   ├── data/                              # Created automatically by the scripts
+│   │   └── scripts/
+│   │       └── fetcher_raster.py              # WorldPop download + clip script
 │   └── WORLDPOP/
-│       └── ind_ppp_2020_UNadj.tif             # WorldPop raster (download separately)
+│       ├── ind_ppp_2020_UNadj_constrained.tif # Downloaded automatically by fetcher_raster.py
+│       └── <state>_pop_2020.tif               # Clipped output from fetcher_raster.py
 │
 ├── main.py
 └── transformer.py
 ```
 
-> **WorldPop raster:** Download `ind_ppp_2020_UNadj.tif` from [https://www.worldpop.org](https://www.worldpop.org) and place it in `Sources/WORLDPOP/`.
+---
+
+## Step 3 — Download and Clip WorldPop Raster (`fetcher_raster.py`)
+
+Before running the main pipeline, you need a WorldPop population raster clipped to your state boundary. `fetcher_raster.py` handles this automatically — it downloads the raster directly from WorldPop and clips it to your state GeoJSON.
+
+Always run this from the **project root**, not from inside the scripts folder:
+
+```bash
+cd /path/to/your/project
+python Sources/ANTYODAYA/scripts/fetcher_raster.py
+```
+
+Or with explicit arguments:
+
+```bash
+python Sources/ANTYODAYA/scripts/fetcher_raster.py --year 2020 --state-geojson Maps/Geojson/odisha_state.geojson
+```
+
+**What it does internally:**
+
+- Resolves your state boundary from `Maps/Geojson/*_state.geojson`.
+- Downloads the WorldPop UN-adjusted constrained population raster for India (`ind_ppp_{year}_UNadj_constrained.tif`) from `data.worldpop.org` into `Sources/WORLDPOP/`. Falls back to the unconstrained raster if the constrained one is unavailable for that year. Skips the download entirely if the file already exists.
+- Reprojects the state boundary to match the raster CRS if they differ.
+- Clips the full India raster to your state boundary using `rasterio`.
+- Saves the clipped output as `Sources/WORLDPOP/<statename>_pop_<year>.tif`.
+
+> **Note:** The full India raster is ~400 MB — the initial download will take a few minutes depending on your connection. Subsequent runs skip the download and go straight to clipping.
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--year` | `2020` | Year of WorldPop data |
+| `--state-geojson` | `Maps/Geojson/*_state.geojson` | Path or glob to state boundary GeoJSON |
+| `--raster-dir` | `Sources/ANTYODAYA/data/rasters` | Where to store the downloaded raster |
+| `--output` | `Sources/ANTYODAYA/data/<state>_pop_<year>.tif` | Output path for the clipped raster |
 
 ---
 
-## Step 3 — Run `main.py`
+## Step 4 — Run `main.py`
 
-`main.py` is the first script in the pipeline. It reads the raw Antyodaya Excel file, converts each village record into a geographic point using its latitude/longitude, and spatially joins it to a Revenue Circle polygon. Villages that don't fall inside any polygon are then re-matched using their official village boundary centroid from the Bharat Maps GeoJSON.
+`main.py` is the script in the pipeline to be run after the fetcher_raster.py. It reads the raw Antyodaya Excel file, converts each village record into a geographic point using its latitude/longitude, and spatially joins it to a Revenue Circle polygon. Villages that don't fall inside any polygon are then re-matched using their official village boundary centroid from the Bharat Maps GeoJSON.
 
 ```bash
 python main.py
@@ -83,9 +120,9 @@ Enter the path of the antodaya file: /path/to/your/downloaded_file.xlsx
 
 ---
 
-## Step 4 — Run `transformer.py`
+## Step 5 — Run `transformer.py`
 
-`transformer.py` is the second script. It takes the tagged village data produced by `main.py` and aggregates it up to the Revenue Circle level, combining rural Antyodaya indicators with urban population estimates from the WorldPop raster.
+`transformer.py` is the script to be run after main.py. It takes the tagged village data produced by `main.py` and aggregates it up to the Revenue Circle level, combining rural Antyodaya indicators with urban population estimates from the WorldPop raster.
 
 ```bash
 python transformer.py
@@ -106,7 +143,7 @@ Enter the name of the state: OD
   - Net sown area (hectares)
   - Domestic electricity availability (hours/day, encoded into a numeric score)
   - Telephone service availability
-  - Households with piped water connections
+  - Householdswith piped water connections
   - Households without sanitary latrines
 - **Combines rural and urban estimates** for each indicator at the Revenue Circle level and computes percentages and averages.
 - **Writes the final output** to `Sources/ANTYODAYA/data/variables/antyodaya/antyodaya_variables.csv` — one row per Revenue Circle, with all vulnerability variables ready for downstream modelling or mapping.
@@ -117,6 +154,7 @@ Enter the name of the state: OD
 
 | File | Script | Description |
 |---|---|---|
+| `<state>_pop_<year>.tif` | `fetcher_raster.py` | WorldPop raster clipped to state boundary |
 | `antyodaya_village_dataset_with_revenue_circle.xlsx` | `main.py` | Village-level data with Revenue Circle tags |
 | `MissionAntyodaya2020_<state>_taggedRC.csv` | `main.py` | Full tagged dataset as CSV |
 | `MissionAntyodaya2020_<state>_vul.csv` | `main.py` | Trimmed file with vulnerability input columns only |

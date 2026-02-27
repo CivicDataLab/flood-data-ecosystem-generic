@@ -1,260 +1,270 @@
+"""
+Tender District Geo-Tagging Script
+====================================
+Matches tender records to districts using three independent signals:
+  1. External Reference field
+  2. Tender Title + Work Description
+  3. Location field
+
+The script auto-detects whether the GeoJSON uses 'block_name' or 'sdtname'
+as the sub-district identifier and builds lookup dictionaries accordingly.
+
+Each signal tries to match at district → block/sdtname level (in that order).
+A final weightage step reconciles all signals into DISTRICT_FINALISED.
+"""
+
+import os
+import re
+import glob
 import pandas as pd
 import geopandas as gpd
-import re
-import os
 from difflib import SequenceMatcher
 
-tenders_df = pd.read_csv(os.getcwd()+r'\flood-data-ecosystem-Odisha\Sources\TENDERS\data\flood_tenders_all.csv')
+# ─────────────────────────────────────────────────────────────
+# 1. LOAD DATA
+# ─────────────────────────────────────────────────────────────
 
-#HP_VILLAGES = gpd.read_file(os.getcwd()+'/Maps/assam_village_complete_with_revenueCircle_district_35_oct2022.geojson',
- #                              driver='GeoJSON')
-OD_VILLAGES = pd.read_csv(os.getcwd()+r'\flood-data-ecosystem-Odisha\Maps\Geojson\ODISHA_VILLAGES_MASTER.csv', encoding='utf-8').dropna()
+tenders_path = os.path.join(os.getcwd(), 'Sources', 'TENDERS', 'data', 'flood_tenders_all.csv')
+tenders_df   = pd.read_csv(tenders_path)
 
-#Clean village names
-od_villages = OD_VILLAGES["vilnam_soi"]
-#hp_villages = hp_villages.to_frame()
-village_duplicates_df = OD_VILLAGES[od_villages.isin(od_villages[od_villages.duplicated()])].sort_values("vilnam_soi")
-#village_duplicates_df = HP_VILLAGES[HP_VILLAGES.isin(HP_VILLAGES[HP_VILLAGES.duplicated()])].sort_values(by="VILNAM_SOI")
+villages_files = glob.glob(os.path.join(os.getcwd(), 'Maps', 'Geojson', '*_villages.geojson'))
+if not villages_files:
+    raise FileNotFoundError("No *_villages.geojson file found under Maps/Geojson/")
 
+vil = gpd.read_file(villages_files[0]).drop(columns='geometry', errors='ignore')
+csv_path = villages_files[0].replace('.geojson', '.csv')
+vil.to_csv(csv_path, index=False)
 
-'''
-VILLAGE_CORRECTION_DICT = {
-    "SOKARBILA(BOLGARBARI)(DARIAPAR" : "SOKARBILA(BOLGARBARI)(DARIAPAR)",
-    "MANGALDAI EXTENDED TOWN (BHEBA" : "MANGALDAI EXTENDED TOWN (BHEBA)",
-    "UPPER DIHING R.F. (SOUTH BLOCK" : "UPPER DIHING R.F. (SOUTH BLOCK)",
-    "KACHARI MAITHCHAGAON NO.1(BAR" : "KACHARI MAITHCHAGAON NO.1(BAR)",
-}
+OD_VILLAGES = pd.read_csv(csv_path, encoding='utf-8').dropna()
+print(f"Villages loaded  →  {OD_VILLAGES.shape[0]} rows | saved at: {csv_path}")
 
 
-HP_VILLAGES.revenue_ci = HP_VILLAGES.revenue_ci.str.replace('\(Pt\)','')
-HP_VILLAGES.revenue_ci = HP_VILLAGES.revenue_ci.str.replace('\(Pt-I\)','')
-HP_VILLAGES.revenue_ci = HP_VILLAGES.revenue_ci.str.replace('\(Pt-II\)','')
-HP_VILLAGES.revenue_ci = HP_VILLAGES.revenue_ci.str.replace('\n',' ')
-HP_VILLAGES.revenue_ci = HP_VILLAGES.revenue_ci.str.strip()
+# ─────────────────────────────────────────────────────────────
+# 2. AUTO-DETECT SUB-DISTRICT COLUMN
+#    Checks whether the GeoJSON has 'block_name' or 'sdtname'
+#    and sets SUB_COL accordingly. Raises clearly if neither exists.
+# ─────────────────────────────────────────────────────────────
 
-HP_VILLAGES.sdtname_2 = HP_VILLAGES.sdtname_2.str.replace('\(Pt\)','')
-HP_VILLAGES.sdtname_2 = HP_VILLAGES.sdtname_2.str.replace('\(Pt-I\)','')
-HP_VILLAGES.sdtname_2 = HP_VILLAGES.sdtname_2.str.replace('\(Pt-II\)','')
-'''
-#tenders_df['location'] = tenders_df['location'].fillna(tenders_df['Location'])
+DISTRICT_COL = 'dtname'   # district column — assumed constant across states
 
-# Dropping the original columns if you no longer need them
-#tenders_df.drop(columns=['Location'], inplace=True)
+if 'block_name' in OD_VILLAGES.columns and 'sdtname' in OD_VILLAGES.columns:
+    # Both present — prefer block_name but keep sdtname as fallback
+    SUB_COL      = 'block_name'
+    FALLBACK_COL = 'sdtname'
+    print(" Both 'block_name' and 'sdtname' found → using 'block_name' as primary, 'sdtname' as fallback.")
+
+elif 'block_name' in OD_VILLAGES.columns:
+    SUB_COL      = 'block_name'
+    FALLBACK_COL = None
+    print(" Column detected: 'block_name'")
+
+elif 'sdtname' in OD_VILLAGES.columns:
+    SUB_COL      = 'sdtname'
+    FALLBACK_COL = None
+    print("Column detected: 'sdtname'")
+
+else:
+    raise ValueError(
+        "GeoJSON has neither 'block_name' nor 'sdtname'. "
+        "Available columns: " + str(list(OD_VILLAGES.columns))
+    )
+
+print(f"   SUB_COL = '{SUB_COL}'  |  FALLBACK_COL = '{FALLBACK_COL}'")
 
 
-locations = []
-for idx, row in tenders_df.iterrows():
-    LOCATION = row['location'].lower()
-    LOCATION = LOCATION.replace('village','')
-    LOCATION = LOCATION.replace('district','')
-    LOCATION = LOCATION.replace('dist','')
-    LOCATION = re.sub(r'[^a-zA-Z\n\.]', ' ', LOCATION)
-    scores = []
-    for subdistrict in OD_VILLAGES.sdtname.dropna().unique():
-        score = SequenceMatcher(None, LOCATION, subdistrict.lower().strip()).ratio()
-        scores.append(score)
-    if max(scores)>0.8:
-        locations.append(OD_VILLAGES.sdtname.dropna().unique()[scores.index(max(scores))])
+# ─────────────────────────────────────────────────────────────
+# 3. BUILD LOOKUP DICTIONARIES  (only unambiguous mappings)
+# ─────────────────────────────────────────────────────────────
+
+def build_unique_dict(df: pd.DataFrame, key_col: str, val_col: str) -> dict:
+    """
+    Returns { key → district } keeping only rows where the key
+    maps to exactly ONE district (ambiguous keys are dropped).
+    """
+    if key_col not in df.columns:
+        return {}
+    return (
+        df[[key_col, val_col]]
+        .dropna()
+        .drop_duplicates()
+        .drop_duplicates(subset=[key_col], keep=False)
+        .set_index(key_col)[val_col]
+        .to_dict()
+    )
+
+# Primary sub-district dict (block_name OR sdtname)
+sub_dict     = build_unique_dict(OD_VILLAGES, SUB_COL, DISTRICT_COL)
+# Fallback dict (sdtname when block_name is primary; empty otherwise)
+fallback_dict = build_unique_dict(OD_VILLAGES, FALLBACK_COL, DISTRICT_COL) if FALLBACK_COL else {}
+# Village dict
+villages_dict = build_unique_dict(OD_VILLAGES, 'vilnam_soi', DISTRICT_COL)
+
+# Unique name lists for matching
+od_districts  = OD_VILLAGES[DISTRICT_COL].dropna().unique().tolist()
+od_sub_names  = list(sub_dict.keys())
+od_fb_names   = list(fallback_dict.keys())   # empty if no fallback
+
+# Log ambiguous sub-district names that were excluded
+ambiguous = (
+    OD_VILLAGES[[SUB_COL, DISTRICT_COL]]
+    .drop_duplicates()
+    .dropna()
+    .pipe(lambda df: df[df.duplicated(SUB_COL, keep=False)])
+)
+print(f"   Ambiguous {SUB_COL} entries excluded from matching: {ambiguous[SUB_COL].nunique()}")
+
+# Fuzzy match candidates — prefer sdtname for fuzzy (more specific)
+FUZZY_COL = FALLBACK_COL if FALLBACK_COL else SUB_COL
+fuzzy_candidates = OD_VILLAGES[FUZZY_COL].dropna().unique()
+print(f"   Fuzzy matching column: '{FUZZY_COL}' ({len(fuzzy_candidates)} candidates)\n")
+
+
+# ─────────────────────────────────────────────────────────────
+# 4. HELPER FUNCTIONS
+# ─────────────────────────────────────────────────────────────
+
+def clean_text(text: str) -> str:
+    """Lowercase, strip noise words and non-alpha characters."""
+    text = str(text).lower()
+    for word in ['village', 'district', 'dist', 'block']:
+        text = text.replace(word, ' ')
+    return re.sub(r'[^a-zA-Z\s]', ' ', text).strip()
+
+
+def fuzzy_match(text: str, threshold: float = 0.80) -> str | None:
+    """
+    Fuzzy-match `text` against fuzzy_candidates (sdtname or block_name).
+    Returns the best match name if score ≥ threshold, else None.
+    """
+    scores     = [SequenceMatcher(None, text, c.lower().strip()).ratio() for c in fuzzy_candidates]
+    best_score = max(scores) if scores else 0
+    if best_score >= threshold:
+        return fuzzy_candidates[scores.index(best_score)]
+    return None
+
+
+def regex_match_district(slug: str) -> str | None:
+    """
+    Match a text slug to a district via tiers (highest → lowest specificity):
+      Tier 1 — district name     (exact word-boundary)
+      Tier 2 — primary sub col   (block_name or sdtname → district)
+      Tier 3 — fallback sub col  (sdtname if block_name was primary)
+    Returns district name or None.
+    """
+    slug = re.sub(r'[^a-zA-Z0-9\s]', ' ', str(slug)).lower()
+
+    # Tier 1 — district
+    for district in od_districts:
+        if re.search(r'\b' + re.escape(district.lower().strip()) + r'\b', slug):
+            return district
+
+    # Tier 2 — primary sub-district column
+    for name in od_sub_names:
+        if re.search(r'\b' + re.escape(name.lower().strip()) + r'\b', slug):
+            return sub_dict[name]
+
+    # Tier 3 — fallback sub-district column (if available)
+    for name in od_fb_names:
+        if re.search(r'\b' + re.escape(name.lower().strip()) + r'\b', slug):
+            return fallback_dict[name]
+
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. SIGNAL A — Location column  (fuzzy match → cleaned location)
+# ─────────────────────────────────────────────────────────────
+
+def match_location_fuzzy(location: str) -> str:
+    cleaned = clean_text(location)
+    match   = fuzzy_match(cleaned)
+    return match if match else location
+
+tenders_df['location_cleaned'] = tenders_df['location'].apply(match_location_fuzzy)
+print("Signal A — Location fuzzy matching done.")
+
+
+# ─────────────────────────────────────────────────────────────
+# 6. SIGNAL B — External Reference field
+# ─────────────────────────────────────────────────────────────
+
+def extract_district_from_ref(ref) -> str | None:
+    if pd.isna(ref):
+        return None
+    identifier = str(ref).split('/')[0].lower()
+    if 'rgr' in identifier:
+        identifier = identifier.split('rgr')[0].strip()
+    return regex_match_district(identifier)
+
+tenders_df['tender_district_externalReference'] = (
+    tenders_df['tender_externalreference'].apply(extract_district_from_ref)
+)
+print("Signal B — External reference matching done.")
+
+
+# ─────────────────────────────────────────────────────────────
+# 7. SIGNAL C — Tender Title + Work Description
+# ─────────────────────────────────────────────────────────────
+
+def extract_district_from_title(row) -> str | None:
+    slug = str(row.get('tender_title', '')) + ' ' + str(row.get('Work Description', ''))
+    return regex_match_district(slug)
+
+tenders_df['tender_district_title_description'] = tenders_df.apply(
+    extract_district_from_title, axis=1
+)
+print("Signal C — Title + description matching done.")
+
+
+# ─────────────────────────────────────────────────────────────
+# 8. SIGNAL D — Location column (regex on cleaned location)
+# ─────────────────────────────────────────────────────────────
+
+tenders_df['tender_district_location'] = tenders_df['location_cleaned'].apply(
+    regex_match_district
+)
+print("Signal D — Location regex matching done.")
+
+
+# ─────────────────────────────────────────────────────────────
+# 9. WEIGHTAGE — Reconcile all signals into DISTRICT_FINALISED
+# ─────────────────────────────────────────────────────────────
+
+def reconcile_districts(row) -> str:
+    """
+    Gather all non-null signal values.
+    - 1 unique district  → use it
+    - 0 values           → 'NA'
+    - 2+ different       → 'CONFLICT'
+    """
+    signals = [
+        row['tender_district_externalReference'],
+        row['tender_district_title_description'],
+        row['tender_district_location'],
+    ]
+    found = {s for s in signals if pd.notna(s)}
+
+    if len(found) == 1:
+        return found.pop()
+    elif len(found) == 0:
+        return 'NA'
     else:
-        locations.append(row['location'])
+        return 'CONFLICT'
 
-tenders_df.Location = locations
-
-blocks = OD_VILLAGES[["block_name",'dtname']].drop_duplicates().dropna()
-#These revenue circles are across multiple districts
-problematic_blocks = blocks[blocks.duplicated(['block_name'],keep=False)].sort_values('block_name')
-
-# GEOCODE DISTRICTS
-
-#MAKE A DICTIONARY OF ONLY NON-REPEATED REVENUE CIRCLES, SUB-DISTRICTS, BLOCKS and VILLAGES MAPPED TO THEIR DISTRICTS
-#assam_revenue_circles_dict = HP_VILLAGES[['revenue_ci','district_2']].dropna().drop_duplicates().drop_duplicates(['revenue_ci'],keep=False).set_index('revenue_ci').to_dict(orient='index')
-od_subdist_dict = OD_VILLAGES[['sdtname','dtname']].dropna().drop_duplicates().drop_duplicates(['sdtname'],keep=False).set_index('sdtname').to_dict(orient='index')
-od_blocks_dict = OD_VILLAGES[['block_name','dtname']].dropna().drop_duplicates().drop_duplicates(['block_name'],keep=False).set_index('block_name').to_dict(orient='index')
-OD_VILLAGES_dict = OD_VILLAGES[['vilnam_soi','dtname']].drop_duplicates(['vilnam_soi'],keep=False).set_index('vilnam_soi').to_dict(orient='index')
+tenders_df['DISTRICT_FINALISED'] = tenders_df.apply(reconcile_districts, axis=1)
+print("Weightage reconciliation done.")
 
 
-#MAKE LIST OF DISTRICTS, REVENUE CIRCLES, SUB-DISTRICTS, BLOCKS and VILLAGES WITH NON-REPEATING NAMES
-problematic_blocksUPPERCASE = [] #Empty after forcefitted. #[rc.upper().strip() for rc in problematic_subdistricts.revenue_ci.unique()]
-problematic_blkUPPERCASE = [block.upper().strip() for block in problematic_blocks.block_name.unique()]
-od_villages = list(set(OD_VILLAGES_dict.keys())-set(problematic_blocksUPPERCASE)-set(problematic_blkUPPERCASE))
-od_blocks = list(set(od_blocks_dict.keys())-set(problematic_blocksUPPERCASE)-set(problematic_blkUPPERCASE))
-od_districts = list(set(OD_VILLAGES.dtname.dropna()))#-set(['KAMRUP','KAMRUP METRO']))
+# ─────────────────────────────────────────────────────────────
+# 10. SAVE OUTPUT
+# ─────────────────────────────────────────────────────────────
 
-#assam_revenue_circles = list(set(assam_revenue_circles_dict.keys()))#-set(problematic_subdistricts.revenue_ci.unique())-set(problematic_sdts.sdtname_2.unique()))
-od_sub_districts = list(set(od_subdist_dict.keys())-set(problematic_blocks.block_name.unique())-set(problematic_blocks.block_name.unique()))
+output_path = os.path.join(
+    os.getcwd(),
+    'Sources', 'TENDERS', 'data',
+    'floodtenders_districtgeotagged.csv'
+)
+os.makedirs(os.path.dirname(output_path), exist_ok=True)
+tenders_df.to_csv(output_path, index=False)
+print(f"\n Output saved → {output_path}")
 
-
-# METHOD-2 WEIGHTAGE METHOD
-# GET TENDER DISTRICT BASED ON externalReference COLUMN
-
-tenders_df['tender_district_externalReference'] = None
-for idx, row in tenders_df.iterrows():
-    
-    district_identifier = str(row['tender_externalreference']).split(r'/')[0].lower()
-    if 'rgr' in district_identifier:
-        district_identifier = district_identifier.split('rgr')[0].strip()[:-1]
-    
-    #if district_identifier in three_letter_distirct_identifiers_dict:
-    #    tenders_df.loc[idx,'tender_district_externalReference'] = three_letter_distirct_identifiers_dict[district_identifier]
-        
-for idx, row in tenders_df.iterrows():
-    if row['tender_externalreference'] != None:
-        continue
-    tender_slug = str(row['tender_externalreference'])
-    tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    for district in od_districts:
-        if re.findall(r'\b%s\b'%district.lower().strip(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_externalReference'] = district
-            break
-'''            
-## REVENUE
-for idx, row in tenders_df.iterrows():
-    if row['tender_externalreference'] != None:
-        continue
-    
-    tender_slug = str(row['tender_externalreference'])
-    tender_slug = re.sub('[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    for revenue_circle in assam_revenue_circles:
-        if re.findall(r'\b%s\b'%revenue_circle.lower().strip(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_externalReference'] = assam_revenue_circles_dict[revenue_circle]['district_2']
-            break '''
-
-            
-## SUB DISTRICT
-for idx, row in tenders_df.iterrows():
-    if row['tender_externalreference'] != None:
-        continue
-    
-    tender_slug = str(row['tender_externalreference'])
-    tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    for sub_district in od_sub_districts:
-        if re.findall(r'\b%s\b'%sub_district.lower(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_externalReference'] = od_subdist_dict[sub_district]['dtname']
-            break
-
-# GET TENDER DISTRICT BASED ON TITLE AND WORK DESCRIPTION
-
-tenders_df['tender_district_title_description'] = None
-for idx, row in tenders_df.iterrows():
-    tender_slug = str(row['tender_title']) + ' ' + str(row['Work Description'])
-    tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    for district in od_districts:
-        if re.findall(r'\b%s\b'%district.lower().strip(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_title_description'] = district
-            break
-           
-## BLOCK
-for idx, row in tenders_df.iterrows():
-    if row['tender_district_title_description'] != None:
-        continue
-    
-    tender_slug = str(row['tender_title']) + ' ' + str(row['Work Description'])
-    tender_slug = re.sub('[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    for block in od_blocks:
-        if re.findall(r'\b%s\b'%block.lower().strip(), tender_slug.lower()):
-            print(block)
-            tenders_df.loc[idx,'tender_district_title_description'] = od_blocks_dict[block]['dtname']
-            break
-
-            
-## SUB DISTRICT
-for idx, row in tenders_df.iterrows():
-    if row['tender_district_title_description'] != None:
-        continue
-    
-    tender_slug = str(row['tender_title']) + ' ' + str(row['Work Description'])
-    tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    for sub_district in od_sub_districts:
-        if re.findall(r'\b%s\b'%sub_district.lower(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_title_description'] = od_subdist_dict[sub_district]['dtname']
-            break
-# GET TENDER DISTRICT BASED ON LOCATION COLUMN
-tenders_df['tender_district_location'] = None
-for idx, row in tenders_df.iterrows():
-    tender_slug = str(row['location']) 
-    tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    for district in od_districts:
-        if re.findall(r'\b%s\b'%district.lower().strip(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_location'] = district
-            break
-          
-## BLOCK
-for idx, row in tenders_df.iterrows():
-    if row['tender_district_location'] != None:
-        continue
-    
-    tender_slug = str(row['location'])
-    tender_slug = re.sub('[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    for block in od_blocks:
-        if re.findall(r'\b%s\b'%block.lower().strip(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_location'] = od_blocks_dict[block]['dtname']
-            break
-
-            
-## SUB DISTRICT
-for idx, row in tenders_df.iterrows():
-    if row['tender_district_location'] != None:
-        continue
-    
-    tender_slug = str(row['location'])
-    tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    for sub_district in od_sub_districts:
-        if re.findall(r'\b%s\b'%sub_district.lower(), tender_slug.lower()):
-            tenders_df.loc[idx,'tender_district_location'] = od_subdist_dict[sub_district]['dtname']
-            break
-'''
-# BTC FLAG
-tenders_df['BTC_flag'] = None
-for idx, row in tenders_df.iterrows():
-    BTC_flag = False
-    
-    #tender_slug = str(row['Tender ID']) + ' ' + str(row['tender_title']) + ' ' + str(row['Work Description'] + ' ' + str(row['location']))
-    #tender_slug = re.sub('[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    #skip Bodoland tenders
-    department_slug = str(row["Organisation Chain"] + ' ' + row["Department"])
-    department_slug = re.sub('[^a-zA-Z0-9 \n\.]', ' ', department_slug)
-    if re.findall(r"bodoland", department_slug.lower()):
-        BTC_flag= True
-    
-    bodoland_dept_slugs = ["BoTC", "BTC"]
-    for slug in bodoland_dept_slugs:
-        if slug in row["Tender ID"]:
-            BTC_flag= True
-
-    tenders_df.loc[idx,'BTC_flag'] = BTC_flag
-'''
-# WEIGHTAGE LOGIC
-tenders_df['tender_district_externalReference'].fillna('NA',inplace=True) 
-tenders_df['tender_district_title_description'].fillna('NA',inplace=True) 
-tenders_df['tender_district_location'].fillna('NA',inplace=True) 
-
-tenders_df['DISTRICT_FINALISED'] = ''
-
-for idx, row in tenders_df.iterrows():
-    district1 = row['tender_district_externalReference']
-    district2 = row['tender_district_title_description']
-    district3 = row['tender_district_location']
-    districts = [district1,district2,district3]
-    districts = set([x for x in districts if x!='NA'])
-
-    if len(districts)==1:
-        DISTRICT_SELECTED = list(districts)[0]
-    elif len(districts)==0:
-        DISTRICT_SELECTED = 'NA'
-    else:
-        DISTRICT_SELECTED = 'CONFLICT'
-    
-    tenders_df.loc[idx,'DISTRICT_FINALISED'] = DISTRICT_SELECTED
-
-tenders_df.to_csv(os.getcwd()+'/flood-data-ecosystem-Odisha/Sources/TENDERS/data/floodtenders_districtgeotagged.csv',index=False)
-
-print('Total number of flood related tenders: ', tenders_df.shape[0])
-print('Number of tenders whose district could not be geo-tagged: ',tenders_df[tenders_df['DISTRICT_FINALISED']=='NA'].shape[0])
-print('Number of tenders whose district identification is a CONFLICT: ',tenders_df[tenders_df['DISTRICT_FINALISED']=='CONFLICT'].shape[0])

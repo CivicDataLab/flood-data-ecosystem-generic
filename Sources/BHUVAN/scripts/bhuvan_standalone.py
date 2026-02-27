@@ -115,6 +115,188 @@ DEFAULT_STATE_CONFIG = {
             "lon_east": 87.5
         },
         "delta": 0.0439453125
+    },
+
+    "andhra pradesh": {
+        "code": "ap",
+        "dropdown_value": "id101_0",
+        "dropdown_id": "minus101",
+        "bbox": {
+            "lat_south": 12.6240111221884,
+            "lat_north": 19.166912968171886,
+            "lon_west": 76.76056909718027,
+            "lon_east": 84.76146375590628
+        }
+    },
+
+    "assam": {
+        "code": "as",
+        "dropdown_value": "id100_0",
+        "dropdown_id": "minus100",
+        "bbox": {
+            "lat_south": 24.13613519737949,
+            "lat_north": 27.971475095719736,
+            "lon_west": 89.69860048177071,
+            "lon_east": 96.01787644941203
+        }
+    },
+    "bihar": {
+        "code": "br",
+        "dropdown_value": "id102_0",
+        "dropdown_id": "minus102",
+        "bbox": {
+            "lat_south": 24.28600646908134,
+            "lat_north": 27.521777474925372,
+            "lon_west": 83.32021588676227,
+            "lon_east": 88.29379581022933
+        }
+    },
+
+    "delhi": {
+        "code": "dl",
+        "dropdown_value": "id103_0",
+        "dropdown_id": "minus103",
+        "bbox": {
+            "lat_south": 28.40466759134758,
+            "lat_north": 28.883499628015024,
+            "lon_west": 76.83889215307885,
+            "lon_east": 77.34757046984508
+        }
+    },
+
+    "haryana": {
+        "code": "hr",
+        "dropdown_value": "id120_0",
+        "dropdown_id": "minus120",
+        "bbox": {
+            "lat_south": 27.652270970850193,
+            "lat_north": 30.92854286936908,
+            "lon_west": 74.4732586523917,
+            "lon_east": 77.60459126643798
+        }
+    },
+
+    "kerala": {
+        "code": "kl",
+        "dropdown_value": "id119_0",
+        "dropdown_id": "minus119",
+        "bbox": {
+            "lat_south": 8.293018226041038,
+            "lat_north": 12.795534473801288,
+            "lon_west": 74.864337099569,
+            "lon_east": 77.41239641495655
+        }
+    },
+    "maharashtra": {
+        "code": "mh",
+        "dropdown_value": "id105_0",
+        "dropdown_id": "minus105",
+        "bbox": {
+            "lat_south": 15.606085184614516,
+            "lat_north": 22.030269372833256,
+            "lon_west": 72.64199057033973,
+            "lon_east": 80.8976843176878
+        }
+    },
+    "manipur": {
+        "code": "mn",
+        "dropdown_value": "id111_0",
+        "dropdown_id": "minus111",
+        "bbox": {
+            "lat_south": 23.83284842270268,
+            "lat_north": 25.692090243182655,
+            "lon_west": 92.96943383723556,
+            "lon_east": 94.7448900623007
+        }
+    },
+    "meghalaya": {
+        "code": "ml",
+        "dropdown_value": "id113_0",
+        "dropdown_id": "minus113",
+        "bbox": {
+            "lat_south": 25.02779536088338,
+            "lat_north": 26.119405765138833,
+            "lon_west": 89.81954538642361,
+            "lon_east": 92.8029146664425
+        }
+    },
+
+    "punjab": {
+        "code": "pb",
+        "dropdown_value": "id122_0",
+        "dropdown_id": "minus122",
+        "bbox": {
+            "lat_south": 29.542070143897313,
+            "lat_north": 32.511562574200106,
+            "lon_west": 73.87977595920648,
+            "lon_east": 76.94146149757219
+        }
+    },
+    "tamil nadu": {
+        "code": "tn",
+        "dropdown_value": "id112_0",
+        "dropdown_id": "minus112",
+        "bbox": {
+            "lat_south": 8.07770441572396,
+            "lat_north": 13.56462819768922,
+            "lon_west": 76.23298312565383,
+            "lon_east": 80.34654672836902
+        }
+    },
+    "telangana": {
+        "code": "tg",
+        "dropdown_value": "id117_0",
+        "dropdown_id": "minus117",
+        "bbox": {
+            "lat_south": 15.836003294146044,
+            "lat_north": 19.91680698568637,
+            "lon_west": 77.23576101930497,
+            "lon_east": 81.32264131455234
+        }
+    },
+    "tripura": {
+        "code": "tr",
+        "dropdown_value": "id118_0",
+        "dropdown_id": "minus118",
+        "bbox": {
+            "lat_south": 22.938351491654313,
+            "lat_north": 24.53186712630424,
+            "lon_west": 91.14919851765178,
+            "lon_east": 92.3320574461437
+        }
+    },
+    "west bengal": {
+        "code": "wb",
+        "dropdown_value": "id104_0",
+        "dropdown_id": "minus104",
+        "bbox": {
+            "lat_south": 21.527081529657302,
+            "lat_north": 27.221067412233854,
+            "lon_west": 85.81967347336501,
+            "lon_east": 89.88260219031282
+        }
+    },
+    "karnataka": {
+        "code": "ka",
+        "dropdown_value": "id123_0",
+        "dropdown_id": "minus123",
+        "bbox": {
+            "lat_south": 11.594470724629366,
+            "lat_north": 18.47772646632495,
+            "lon_west": 74.05399340093027,
+            "lon_east": 78.58770234537053
+        }
+    },
+    "madhya pradesh": {
+        "code": "mp",
+        "dropdown_value": "id114_0",
+        "dropdown_id": "minus114",
+        "bbox": {
+            "lat_south": 21.07068852460483,
+            "lat_north": 26.86956164910599,
+            "lon_west": 74.02938199029161,
+            "lon_east": 82.81261164695366
+        }
     }
 }
 

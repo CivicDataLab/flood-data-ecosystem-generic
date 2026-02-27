@@ -1,0 +1,29 @@
+{
+    "states": [
+        {"id": "1",  "name": "Jammu & Kashmir",   "url": "https://jktenders.gov.in/nicgep/app"},
+        {"id": "2",  "name": "Ladakh",             "url": "https://tenders.ladakh.gov.in/nicgep/app"},
+        {"id": "3",  "name": "Himachal Pradesh",   "url": "https://hptenders.gov.in/nicgep/app"},
+        {"id": "4",  "name": "Punjab",             "url": "https://eproc.punjab.gov.in/nicgep/app"},
+        {"id": "5",  "name": "Uttarakhand",        "url": "https://uktenders.gov.in/nicgep/app"},
+        {"id": "6",  "name": "Haryana",            "url": "https://etenders.hry.nic.in/nicgep/app"},
+        {"id": "7",  "name": "Delhi",              "url": "https://govtprocurement.delhi.gov.in/nicgep/app"},
+        {"id": "8",  "name": "Uttar Pradesh",      "url": "https://etender.up.nic.in/nicgep/app"},
+        {"id": "9",  "name": "Rajasthan",          "url": "https://eproc.rajasthan.gov.in/nicgep/app"},
+        {"id": "10", "name": "Madhya Pradesh",     "url": "https://mptenders.gov.in/nicgep/app"},
+        {"id": "11", "name": "Maharashtra",        "url": "https://mahatenders.gov.in/nicgep/app"},
+        {"id": "12", "name": "Kerala",             "url": "https://etenders.kerala.gov.in/nicgep/app"},
+        {"id": "13", "name": "Tamil Nadu",         "url": "https://tntenders.gov.in/nicgep/app"},
+        {"id": "14", "name": "Odisha",             "url": "https://tendersodisha.gov.in/nicgep/app"},
+        {"id": "15", "name": "Jharkhand",          "url": "https://jharkhandtenders.gov.in/nicgep/app"},
+        {"id": "16", "name": "West Bengal",        "url": "https://wbtenders.gov.in/nicgep/app"},
+        {"id": "17", "name": "Assam",              "url": "https://assamtenders.gov.in/nicgep/app"},
+        {"id": "18", "name": "Arunachal Pradesh",  "url": "https://arunachaltenders.gov.in/nicgep/app"},
+        {"id": "19", "name": "Sikkim",             "url": "https://sikkimtender.gov.in/nicgep/app"},
+        {"id": "20", "name": "Nagaland",           "url": "https://nagalandtenders.gov.in/nicgep/app"},
+        {"id": "21", "name": "Manipur",            "url": "https://manipurtenders.gov.in/nicgep/app"},
+        {"id": "22", "name": "Meghalaya",          "url": "https://meghalayatenders.gov.in/nicgep/app"},
+        {"id": "23", "name": "Tripura",            "url": "https://tripuratenders.gov.in/nicgep/app"},
+        {"id": "24", "name": "Mizoram",            "url": "https://mizoramtenders.gov.in/nicgep/app"},
+        {"id": "0",  "name": "Custom URL",         "url": null}
+    ]
+}

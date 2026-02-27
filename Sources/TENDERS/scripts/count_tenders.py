@@ -27,8 +27,8 @@ for file in csv_files:
 combined_df = pd.concat(all_dfs, ignore_index=True)
 
 # Save to single CSV file
-combined_df.to_csv('Sources/TENDERS/data/odisha_all_tenders.csv', index=False)
+combined_df.to_csv('Sources/TENDERS/data/all_tenders.csv', index=False)
 
 print(f'Total number of tenders (all files): {total_count}')
 print(f'Total number of tenders with Status="Accepted-AOC": {accepted_count}')
-print(f'Combined CSV file saved as odisha_all_tenders.csv')
+print(f'Combined CSV file saved as all_tenders.csv')

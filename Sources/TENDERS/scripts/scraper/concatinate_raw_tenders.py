@@ -28,8 +28,7 @@ for year in range(2024,2026):
 
         master_df = pd.concat(dfs)
         master_df = master_df.dropna(subset=['Tender ID'])
-        #Commented script is to debug columns
-        #master_df.to_csv(r'D:\CivicDataLab_IDS-DRR\IDS-DRR_Github\IDS-DRR-Assam\Sources\TENDERS\scripts\scraper/debug_{}.csv'.format(folder), index=False)
+       
         try:
              master_df = master_df[['Tender ID','Tender Reference Number', 'Title', 'Work Description', 'Tender Category', 'Tender Type',
                             'Form of contract',

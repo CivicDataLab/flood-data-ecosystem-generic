@@ -1,0 +1,62 @@
+{
+    "flood_filter": {
+        "positive": [
+            "Flood", "Embankment", "embkt", "Relief", "Erosion", "SDRF", "Inundation", "Hydrology",
+            "Silt", "Siltation", "Bund", "Trench", "Breach", "Culvert", "Sluice", "Dyke",
+            "Storm water drain", "Emergency", "Immediate", "IM", "AE", "A E", "AAPDA MITRA",
+            "flood", "Embankment", "Erosion", "Hydrology", "Silt", "Dyke", "Trench", "Breach",
+            "Culvert", "Sluice", "Bridge", "River", "Drain", "Storm water drain", "Restoration",
+            "Protection", "irr", "irrigation", "dam", "Nallah", "Retrofitting", "Pond", "Pokhari",
+            "D/C", "Recharge shaft", "LFB", "RFB"
+        ],
+        "negative": [
+            "Floodlight", "Flood Light", "GAS", "FIFA", "pipe", "pipes", "covid",
+            "supply", "Beautification", "Installation"
+        ]
+    },
+
+    "exclusion_departments": [
+        "Directorate of Agriculture and Assam Seed Corporation",
+        "Department of Handloom Textile and Sericulture"
+    ],
+
+    "scheme_keywords": [
+        "ridf", "sdrf", "sopd", "cidf", "ltif", "sdmf", "ndrf"
+    ],
+
+    "erosion_keywords": [
+        "anti erosion", "ae", "a/e", "a e", "erosion", "eroded", "erroded", "errosion"
+    ],
+
+    "roads_bridges_embankments_keywords": [
+        "roads", "bridges", "road", "bridge", "storm water drain", "drain",
+        "box cul", "box culvert", "box culv", "culvert", "embankment", "embkt",
+        "river bank protection", "bund", "bunds", "bundh", "bank protection", "dyke",
+        "dyke wall", "dyke walls", "silt", "siltation", "sluice", "breach"
+    ],
+
+    "response_type": {
+        "immediate_measures": [
+            "sdrf", "im", "i/m", "gr", "g/r", "relief", "package", "pkt",
+            "immediate", "emergency", "pk", "g.r.", "i.m."
+        ],
+        "repair_restoration": [
+            "improvement", "imp.", "impvt", "impt.", "repair", "repairing",
+            "restoration", "reconstruction", "reconstn", "recoupment", "raising",
+            "strengthening", "r/s", "m and r", "upgradation", "renovation",
+            "repairing/renovation", "up-gradation", "m-r", "mr", "widening",
+            "r s", "extension", "replacement", "re-shaping", "re-grading",
+            "Check Dam", "Construction", "Bridge", "Retrofitting", "Drain"
+        ],
+        "preparedness_measures": [
+            "shelter", "shelters", "tarpaulin", "responder kit",
+            "aapda mitra volunteers", "aapda mitra volunteer",
+            "district emergency stockpile", "search light", "life buoys",
+            "boat ambulances", "boat ambulance", "inflatable rubber",
+            "mechanized boats", "mechanised boats", "mechanized boat", "mechanised boat",
+            "per", "Period", "Periodical maintainance", "Maintainance",
+            "Annual maintenance", "Protection", "scoured", "Scoured bank",
+            "Recharge Shaft", "De-weeding", "Cleaning", "Flood Protection work"
+        ]
+    }
+}

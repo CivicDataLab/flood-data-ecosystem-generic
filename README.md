@@ -5,7 +5,7 @@ The repository contains codes to extract datasets relevant for flood risk analys
 
 ## Directory Tree:
 1. [Sources](): Contains all data sources along with the scripts used to obtain data from these sources. 
-2. [Maps](): Contains all data sources along with the scripts used to extract the shapefiles for the data analysis. 
+2. [Maps](): Contains all data sources along with the scripts used to extract the shapefiles for the data analysis and run the Map exporter to get the desired  state/district/subdistrict/villages geojson file. 
 1. [Analysis](): Contains jupiter notebooks and scripts to analyse the extracted data and run data quality tests. 
 
 ---
