@@ -1,149 +1,182 @@
 import pandas as pd
 import os
 import glob
-import datetime
 import geopandas as gpd
 import warnings
 warnings.filterwarnings("ignore")
 
-variables_data_path = os.getcwd() + r'/flood-data-ecosystem-Odisha/Sources/master/'
-od_sd = gpd.read_file(r'D:\CivicDataLab_IDS-DRR\IDS-DRR_Github\flood-data-ecosystem-Odisha\Maps\od_ids-drr_shapefiles\odisha_block_final.geojson')
+# ==============================
+# Paths
+# ==============================
+variables_data_path = os.path.join(os.getcwd(), 'Sources/master/')
 
-date_range = pd.date_range(start="2021-04-01", end="2024-11-01", freq='MS')
+od_sd_files = glob.glob(os.path.join(os.getcwd(), 'Maps/Geojson/*_subdistricts.geojson'))
+if not od_sd_files:
+    raise FileNotFoundError("No *_subdistricts.geojson file found")
 
-# Format the date values as "YYYY_MM" strings
+od_sd = od_sd_files[0]
+state_sd = gpd.read_file(od_sd)
+
+# ==============================
+# Date Input
+# ==============================
+start_date = input("Enter start date (YYYY-MM-DD): ").strip()
+end_date = input("Enter end date (YYYY-MM-DD): ").strip()
+
+try:
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+
+    if end_date < start_date:
+        raise ValueError("End date must be after start date.")
+
+    date_range = pd.date_range(start=start_date, end=end_date, freq='MS')
+
+except Exception as e:
+    raise ValueError(f"Invalid date input: {e}")
+
 formatted_dates = [date.strftime('%Y_%m') for date in date_range]
 
-# Create a Pandas DataFrame with the values
+# ==============================
+# Base Master Frame Creation
+# ==============================
+name_col = 'block_name' if 'block_name' in state_sd.columns else 'sdtname'
+area_col = 'block_area' if 'block_area' in state_sd.columns else 'st_area'
+
 dfs = []
 for year_month in formatted_dates:
-    df = od_sd[['block_name', 'object_id','block_area','dtname']]
-    df.columns = ['block_name', 'object_id', 'block_area','district']
+    df = state_sd[[name_col, 'object_id', area_col, 'dtname']].copy()
+    df.columns = ['subdistrict_name', 'object_id', 'block_area', 'district']
     df['timeperiod'] = year_month
     dfs.append(df)
-master_df = pd.concat(dfs).reset_index(drop = True)
-#df = pd.DataFrame({'timeperiod': formatted_dates})
-print(master_df)
 
-# Variables for model input
-monthly_variables = ['total_tender_awarded_value',
-                     #'SOPD_tenders_awarded_value', 
-                     #'SDRF_tenders_awarded_value', 
-                     'RIDF_tenders_awarded_value', #'LTIF_tenders_awarded_value', 'CIDF_tenders_awarded_value',
-                      'Preparedness Measures_tenders_awarded_value', 
-                      'Immediate Measures_tenders_awarded_value', 
-                      'Others_tenders_awarded_value',
-                      #'Total_Animal_Washed_Away', 'Total_Animal_Affected',
-                      #'Population_affected_Total', 'Crop_Area',
-                      #'Male_Camp', 'Female_Camp', 'Children_Camp',
-                     #'Total_House_Fully_Damaged',
-                     #'Human_Live_Lost_Children', 'Human_Live_Lost_Female', 'Human_Live_Lost_Male',
-                     #'Embankments affected', 'Roads', 'Bridge', 'Embankment breached',
-                     'rainfall','runoff',
-                     #'ndvi_subdis', 'ndbi_subdis',
-                     'inundation', #'riverlevel'
-                     ]
+master_df = pd.concat(dfs).reset_index(drop=True)
+
+# ==============================
+# Monthly Variables
+# ==============================
+monthly_variables = [
+    'total_tender_awarded_value',
+    'RIDF_tenders_awarded_value',
+    'Preparedness Measures_tenders_awarded_value',
+    'Immediate Measures_tenders_awarded_value',
+    'Others_tenders_awarded_value',
+    'rainfall',
+    'runoff',
+    'inundation'
+]
 
 for variable in monthly_variables:
-    print(variable)
-    variable_df = pd.read_csv(variables_data_path + variable + '.csv')
-    #print(variable_df)
-    #if variable in ['ndvi_subdis', 'ndbi_subdis']:
-    #    continue#variable_df = variable_df.rename(columns = {'mean':'mean_'+variable[:4]})
+    print(f"Merging: {variable}")
+    variable_df = pd.read_csv(os.path.join(variables_data_path, variable + '.csv'))
     variable_df = variable_df.drop_duplicates()
-    master_df = master_df.merge(variable_df, on=['object_id', 'timeperiod'], how='left')
+    master_df = master_df.merge(variable_df,
+                                on=['object_id', 'timeperiod'],
+                                how='left')
     master_df = master_df.drop(columns=master_df.filter(regex='_x$|_y$').columns)
 
-'''
-master_df['Relief_Camp_inmates'] = master_df['Male_Camp'].fillna(0).astype(int) \
-    + master_df['Female_Camp'].fillna(0).astype(int) \
-    + master_df['Children_Camp'].fillna(0).astype(int)
-master_df['Human_Live_Lost'] = master_df['Human_Live_Lost_Children'].fillna(0).astype(int) \
-    + master_df['Human_Live_Lost_Female'].fillna(0).astype(int) \
-    + master_df['Human_Live_Lost_Male'].fillna(0).astype(int)
-
-
-master_df = master_df.drop(['Male_Camp', 'Female_Camp', 'Children_Camp',
-                            'Human_Live_Lost_Male', 'Human_Live_Lost_Children', 'Human_Live_Lost_Female'], axis=1)
-
-'''
-#Annual variables
+# ==============================
+# Annual Variables
+# ==============================
 master_df['year'] = master_df['timeperiod'].str[:4].astype(int)
-annual_variables = ['mean_sex_ratio', 'sum_aged_population', 'sum_young_population', 'sum_population']#,
-                    #'final_lu']
+
+annual_variables = [
+    'mean_sex_ratio',
+    'sum_aged_population',
+    'sum_young_population',
+    'sum_population'
+]
 
 for variable in annual_variables:
-    variable_df = pd.read_csv(variables_data_path + variable + '.csv')
-    variable_df = variable_df.rename(columns = {'timeperiod': 'year'})
+    print(f"Merging annual: {variable}")
+    variable_df = pd.read_csv(os.path.join(variables_data_path, variable + '.csv'))
+    variable_df = variable_df.rename(columns={'timeperiod': 'year'})
     master_df = master_df.merge(variable_df,
-                                on = ['object_id', 'year'],
+                                on=['object_id', 'year'],
                                 how='left')
 
-zero_counts = master_df.apply(lambda x: (x == 0).sum())
+# ==============================
+# One-time Variables
+# ==============================
+onetime_variables = [
+    'Schools',
+    'RailLengths',
+    'RoadLengths',
+    'HealthCenters',
+    'slope_elevation',
+    'antyodaya_variables',
+    'drainage_density',
+    'distance_from_river',
+    'distance_from_sea'
+]
 
-print(zero_counts)
-print(master_df.columns)
-
-# one-time variables
-onetime_variables = ['Schools', 'RailLengths', 'RoadLengths','HealthCenters',#'gcn250_average', 
-                     'slope_elevation',
-                      'antyodaya_variables', 'drainage_density','distance_from_river','distance_from_sea']
-                     #'distance_from_river_polygon',]
 master_df['year'] = ''
 
 for variable in onetime_variables:
-    print(variable)
-    variable_df = pd.read_csv(variables_data_path + variable + '.csv')
-    #columns_to_drop = [col for col in ['timeperiod', 'dtname','block_area','district'] if col in variable_df.columns]
-    #if columns_to_drop:
-    #    variable_df = variable_df.drop(columns=columns_to_drop)
+    print(f"Merging one-time: {variable}")
+    variable_df = pd.read_csv(os.path.join(variables_data_path, variable + '.csv'))
     variable_df['year'] = ''
-    print(f"master_df shape: {master_df.shape}")
-    print(f"variable_df shape: {variable_df.shape}")
     master_df = master_df.merge(variable_df,
-                                on = ['object_id', 'year']
-                                ,how='left')
+                                on=['object_id', 'year'],
+                                how='left')
     master_df = master_df.drop(columns=master_df.filter(regex='_y$').columns)
     master_df.columns = master_df.columns.str.replace('_x$', '', regex=True)
 
+# ==============================
+# Imputations
+# ==============================
 
+# Rainfall
+for col in ['max_rain', 'mean_rain', 'sum_rain']:
+    if col in master_df.columns:
+        master_df[col] = master_df[col].fillna(
+            master_df.groupby('object_id')[col].transform('mean')
+        )
 
-#master_df = master_df.drop([#'year', #'count_gcn250_pixels',
-#                            'count_bhuvan_pixels', 'count_inundated_pixels'], axis=1)
+# Runoff
+for col in ['Sum_Runoff', 'Peak_Runoff', 'Mean_Daily_Runoff']:
+    if col in master_df.columns:
+        master_df[col] = master_df[col].fillna(
+            master_df.groupby('object_id')[col].transform('mean')
+        )
 
-#master_df['year'] = master_df['timeperiod'].str[:4]
-#master_df['month'] = master_df['timeperiod'].str[-2:]
-print(master_df.columns)
+# Antyodaya variables
+district_impute_cols = [
+    'block_nosanitation_hhds_pct',
+    'block_piped_hhds_pct',
+    'avg_electricity',
+    'net_sown_area_in_hac'
+]
 
-#mean of sd
-master_df['max_rain'] = master_df['max_rain'].fillna(master_df.groupby(['object_id'])['max_rain'].transform('mean'))
-master_df['mean_rain'] = master_df['mean_rain'].fillna(master_df.groupby(['object_id'])['mean_rain'].transform('mean'))
-master_df['sum_rain'] = master_df['sum_rain'].fillna(master_df.groupby(['object_id'])['sum_rain'].transform('mean'))
+for col in district_impute_cols:
+    if col in master_df.columns:
+        master_df[col] = master_df[col].fillna(
+            master_df.groupby('district')[col].transform('mean')
+        )
 
-master_df['Sum_Runoff'] = master_df['Sum_Runoff'].fillna(master_df.groupby(['object_id'])['Sum_Runoff'].transform('mean'))
-master_df['Peak_Runoff'] = master_df['Peak_Runoff'].fillna(master_df.groupby(['object_id'])['Peak_Runoff'].transform('mean'))
-master_df['Mean_Daily_Runoff'] = master_df['Mean_Daily_Runoff'].fillna(master_df.groupby(['object_id'])['Mean_Daily_Runoff'].transform('mean'))
+if 'avg_tele' in master_df.columns:
+    master_df['avg_tele'] = master_df['avg_tele'].fillna(
+        master_df.groupby('district')['avg_tele'].transform('median')
+    )
 
-
-# Impute missing ANTYODAYA vars
-master_df['block_nosanitation_hhds_pct'] = master_df['block_nosanitation_hhds_pct'].fillna(master_df.groupby(['district'])['block_nosanitation_hhds_pct'].transform('mean'))
-master_df['block_piped_hhds_pct'] = master_df['block_piped_hhds_pct'].fillna(master_df.groupby(['district'])['block_piped_hhds_pct'].transform('mean'))
-master_df['avg_tele'] = master_df['avg_tele'].fillna(master_df.groupby(['district'])['avg_tele'].transform('median')) #median
-master_df['avg_electricity'] = master_df['avg_electricity'].fillna(master_df.groupby(['district'])['avg_electricity'].transform('mean'))
-master_df['net_sown_area_in_hac'] = master_df['net_sown_area_in_hac'].fillna(master_df.groupby(['district'])['net_sown_area_in_hac'].transform('mean'))
-'''
-# Impute missing NDVI and NDBI
-master_df = master_df.sort_values(by=['object_id', 'timeperiod'])
-master_df['mean_ndvi'] = master_df['mean_ndvi'].ffill()
-master_df['mean_ndbi'] = master_df['mean_ndbi'].ffill()
-'''
-
-# Impute all other vars with 0
+# Final fallback
 master_df = master_df.fillna(0)
-# Drop columns with suffixes "_x" and "_y"
-master_df = master_df.loc[:, ~master_df.columns.str.endswith('_x') & ~master_df.columns.str.endswith('_y')]
 
-master_df.to_csv(os.getcwd() + '/flood-data-ecosystem-Odisha/RiskScoreModel/data/MASTER_VARIABLES.csv', index=False)
-#master_df[master_df.duplicated(subset= ['object_id', 'timeperiod'])].to_csv('MASTER_VARIABLES.csv', index=False)
+# Remove merge suffix leftovers
+master_df = master_df.loc[:, ~master_df.columns.str.endswith('_x')]
+master_df = master_df.loc[:, ~master_df.columns.str.endswith('_y')]
 
-print(master_df.shape)
+# ==============================
+# Save Output
+# ==============================
+master_folder = input("Enter the path to RiskscoreModel data folder: ").strip()
+
+if not os.path.isdir(master_folder):
+    raise FileNotFoundError("Folder does not exist")
+
+file_path = os.path.join(master_folder, "MASTER_VARIABLES.csv")
+
+master_df.to_csv(file_path, index=False)
+
+print(f"\nFile saved at: {file_path}")
+print(f"Final shape: {master_df.shape}")

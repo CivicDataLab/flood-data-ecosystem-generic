@@ -39,7 +39,7 @@ urban_shape_file = os.path.join(
 )
 
 worldpop_raster_file = os.path.join(
-    base_dir,"Sources/WORLDPOP/ind_ppp_2020_UNadj.tif.aux.xml"
+    base_dir,"Sources/ANTYODAYA/data/rasters/*_pop_*.tif"
 )
 
 output_antyodaya_variables = os.path.join(

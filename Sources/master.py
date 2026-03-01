@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import glob
 
-main_directory = Path.cwd() / r'flood-data-ecosystem-Odisha/Sources'
+main_directory = os.path.join(os.getcwd(),"Sources")
 print(main_directory)
 
 
@@ -18,7 +18,7 @@ for root, dirs, files in os.walk(main_directory):
         dfs = []
         for csv in csv_files:
             #csv = csv.resolve()
-            if any(folder in str(csv.parts) for folder in ['BHARATMAPS', 'GCN250', 'NASADEM', 'NERDRR', 'ANTYODAYA','WRIS','EXPERIMENTAL']):
+            if any(folder in str(csv.parts) for folder in ['BHARATMAPS','NASADEM','ANTYODAYA','WRIS']):
                 timeperiod = ''
                 file_name = csv.stem
             elif any(folder in str(csv.parts) for folder in ['WORLDPOP']):#, 'WRIS']):
@@ -75,15 +75,6 @@ for csv in csvs:
 master_df = pd.concat(dfs)
 master_df.to_csv(main_directory / 'master/inundation.csv', index=False)
 
-# NRSC
-path = main_directory / 'NRSC/data/variables/runoff'
-csvs = glob.glob(str(path / '*.csv'))
-dfs = []
-for csv in csvs:
-    month = re.findall(r'\d{4}_\d{2}', csv)[0]
-    df = pd.read_csv(csv)
-    df['timeperiod'] = month
-    dfs.append(df)
 
 master_df = pd.concat(dfs)
 master_df.to_csv(main_directory / 'master/runoff.csv', index=False)

@@ -1,218 +1,259 @@
-import pandas as pd
+"""
+Flood Tender Filter & Classification Script
+=============================================
+Reads monthly tender CSVs, filters flood-related tenders using keywords,
+then classifies them by Season, Scheme, Erosion, Roads/Bridges/Embankments,
+and Response Type.
+
+All keywords and department exclusions are loaded from:
+    keywords_config.json  (must be in the same folder as this script)
+
+Output per monthly file : Sources/TENDERS/data/flood_tenders/<filename>.csv
+Combined output          : Sources/TENDERS/data/flood_tenders_all.csv
+"""
+
 import os
 import re
-import dateutil.parser
+import json
 import glob
+import dateutil.parser
+import pandas as pd
 
-# input_df - after the scraper code is run
-data_path = os.getcwd() + r'/Sources/TENDERS/data/monthly_tenders/'
+# ─────────────────────────────────────────────────────────────
+# 1. LOAD CONFIG
+# ─────────────────────────────────────────────────────────────
 
-# Identify flood related tenders using keywords
-def populate_keyword_dict(keyword_list): 
-    keywords_dict = {}
-    for keyword in keyword_list:
-        keywords_dict[keyword] = 0
-    return keywords_dict
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Keywords_config.json')
 
-def flood_filter(row):
-    '''
-    :param row: row of the dataframe that contains tender title, work description
-    
-    :return: Tuple of (is_flood_tender, positive_kw_dict, negative_kw_dict) for every row
-    '''
-    positive_keywords_dict = populate_keyword_dict(POSITIVE_KEYWORDS)
-    negative_keywords_dict = populate_keyword_dict(NEGATIVE_KEYWORDS)
-    tender_slug = str(row['tender_externalreference']) + ' ' + str(row['tender_title']) + ' ' + str(row['Work Description'])
-    tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-    
-    is_flood_tender = False
-    for keyword in POSITIVE_KEYWORDS:
-        keyword_count = len(re.findall(r"\b%s\b" % keyword.lower(), tender_slug.lower()))
-        positive_keywords_dict[keyword] = keyword_count
-        if keyword_count > 0:
-            is_flood_tender = True
-            
-    for keyword in NEGATIVE_KEYWORDS:
-        keyword_count = len(re.findall(r"\b%s\b" % keyword.lower(), tender_slug.lower()))
-        negative_keywords_dict[keyword] = keyword_count
-        if keyword_count > 0:
-            is_flood_tender = False
-           
-    return str(is_flood_tender), str(positive_keywords_dict), str(negative_keywords_dict)
+if not os.path.exists(CONFIG_PATH):
+    raise FileNotFoundError(
+        f"keywords_config.json not found at: {CONFIG_PATH}\n"
+        "Make sure it sits in the same folder as this script."
+    )
 
-csvs = glob.glob(data_path+'*.csv')
+with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+    CONFIG = json.load(f)
 
-for csv in csvs:
-    filename  = re.split(r'/',csv)[-1]
-    filename  = re.split(r'\\',csv)[-1]
-    print ("FILENAME"+ filename)
-    input_df = pd.read_csv(csv)
-    
-    # De-Duplication (Change the logic once the time of scraping is added in the input_df)
+# Unpack all keyword lists from config
+POSITIVE_KEYWORDS   = list(set(CONFIG['flood_filter']['positive']))   # deduplicate
+NEGATIVE_KEYWORDS   = CONFIG['flood_filter']['negative']
+EXCL_DEPARTMENTS    = CONFIG['exclusion_departments']
+SCHEME_KEYWORDS     = set(CONFIG['scheme_keywords'])
+EROSION_KW          = CONFIG['erosion_keywords']
+ROADS_BRIDGES_KW    = CONFIG['roads_bridges_embankments_keywords']
+IMMEDIATE_KW        = CONFIG['response_type']['immediate_measures']
+REPAIR_KW           = CONFIG['response_type']['repair_restoration']
+PREPAREDNESS_KW     = CONFIG['response_type']['preparedness_measures']
+
+print(f"  Config loaded from: {CONFIG_PATH}")
+print(f"   Positive keywords     : {len(POSITIVE_KEYWORDS)}")
+print(f"   Negative keywords     : {len(NEGATIVE_KEYWORDS)}")
+print(f"   Scheme keywords       : {len(SCHEME_KEYWORDS)}")
+print(f"   Exclusion departments : {len(EXCL_DEPARTMENTS)}\n")
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. HELPER FUNCTIONS
+# ─────────────────────────────────────────────────────────────
+
+def build_keyword_dict(keyword_list: list) -> dict:
+    """Initialise a count dict with 0 for every keyword."""
+    return {kw: 0 for kw in keyword_list}
+
+
+def make_tender_slug(row) -> str:
+    """Concatenate and clean the key tender text fields into one searchable string."""
+    raw = (
+        str(row.get('tender_externalreference', '')) + ' ' +
+        str(row.get('tender_title', ''))             + ' ' +
+        str(row.get('Work Description', ''))
+    )
+    return re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', raw)
+
+
+def keyword_counts(slug: str, keywords: list) -> dict:
+    """Return {keyword: count} for every keyword in `keywords` against `slug`."""
+    return {
+        kw: len(re.findall(r'\b%s\b' % re.escape(kw.lower()), slug.lower()))
+        for kw in keywords
+    }
+
+
+def flood_filter(row) -> tuple:
+    """
+    Determine whether a tender is flood-related.
+    Returns (is_flood_tender: str, positive_kw_dict: str, negative_kw_dict: str)
+    """
+    slug = make_tender_slug(row)
+
+    pos_counts = keyword_counts(slug, POSITIVE_KEYWORDS)
+    neg_counts = keyword_counts(slug, NEGATIVE_KEYWORDS)
+
+    is_flood = any(v > 0 for v in pos_counts.values())
+
+    # Any negative keyword match overrides
+    if any(v > 0 for v in neg_counts.values()):
+        is_flood = False
+
+    return str(is_flood), str(pos_counts), str(neg_counts)
+
+
+def classify_season(published_date_str: str) -> str:
+    """Classify a tender date into Pre-Monsoon / Monsoon / Post-Monsoon."""
+    try:
+        month = dateutil.parser.parse(published_date_str).month
+    except Exception:
+        return "Unknown"
+    if 3 <= month <= 5:
+        return "Pre-Monsoon"
+    elif 6 <= month <= 9:
+        return "Monsoon"
+    else:
+        return "Post-Monsoon"
+
+
+def identify_scheme(row) -> str:
+    """Match a tender slug against known scheme keywords (set intersection)."""
+    slug = make_tender_slug(row).lower()
+    tokens = set(re.split(r'[-.,()_\s/]\s*', slug))
+    matches = tokens & SCHEME_KEYWORDS
+    return list(matches)[0].upper() if matches else ''
+
+
+def flag_keywords(slug: str, keywords: list) -> bool:
+    """True if any keyword from the list appears in the slug."""
+    return any(
+        len(re.findall(r'\b%s\b' % re.escape(kw.lower()), slug.lower())) > 0
+        for kw in keywords
+    )
+
+
+def classify_response_type(row) -> tuple:
+    """
+    Classify tender into one of:
+      Immediate Measures / Repair and Restoration / Preparedness Measures / Others
+
+    Priority: Immediate > Repair > Preparedness > Others
+    Returns (response_type, subhead_dict_str)
+    """
+    slug = make_tender_slug(row)
+
+    imm_counts  = keyword_counts(slug, IMMEDIATE_KW)
+    rep_counts  = keyword_counts(slug, REPAIR_KW)
+    prep_counts = keyword_counts(slug, PREPAREDNESS_KW)
+
+    if any(v > 0 for v in imm_counts.values()):
+        response_type = "Immediate Measures"
+        subhead = {k: v for k, v in imm_counts.items() if v > 0}
+    elif any(v > 0 for v in rep_counts.values()):
+        response_type = "Repair and Restoration"
+        subhead = {k: v for k, v in rep_counts.items() if v > 0}
+    elif any(v > 0 for v in prep_counts.values()):
+        response_type = "Preparedness Measures"
+        subhead = {k: v for k, v in prep_counts.items() if v > 0}
+    else:
+        response_type = "Others"
+        subhead = {}
+
+    return response_type, str(subhead)
+
+
+# ─────────────────────────────────────────────────────────────
+# 3. PROCESS EACH MONTHLY CSV
+# ─────────────────────────────────────────────────────────────
+
+data_path   = os.path.join(os.getcwd(), 'Sources', 'TENDERS', 'data', 'monthly_tenders') + os.sep
+output_path = os.path.join(os.getcwd(), 'Sources', 'TENDERS', 'data', 'flood_tenders')
+os.makedirs(output_path, exist_ok=True)
+
+csvs = glob.glob(data_path + '*.csv')
+if not csvs:
+    raise FileNotFoundError(f"No CSVs found in: {data_path}")
+
+print(f"Found {len(csvs)} monthly CSV(s) to process.\n")
+
+for csv_path in csvs:
+    # Normalise path separators for cross-platform safety
+    csv_path = csv_path.replace("\\", "/")
+    filename = csv_path.split("/")[-1]
+    print(f"{'─'*50}")
+    print(f"Processing: {filename}")
+
+    input_df = pd.read_csv(csv_path)
     input_df = input_df.drop_duplicates()
-    tender_ids = input_df["Tender ID"]
-    # duplicates_df = input_df[tender_ids.isin(tender_ids[tender_ids.duplicated()])].sort_values("Tender ID")
-    # input_df = input_df.drop(duplicates_df[duplicates_df['No of Bids Received'].isnull()].index)
-    # input_df.reset_index(drop=True, inplace=True)
-    # deduped_df = input_df.drop_duplicates(subset=['Tender ID'],keep='last')
-    # deduped_df.to_csv(os.getcwd()+'/Sources/TENDERS/data/deduped_master_tender_list.csv', encoding='utf-8')
 
-    #Flood Keywords
-    global POSITIVE_KEYWORDS
-    POSITIVE_KEYWORDS = ['Flood', 'Embankment', 'embkt', 'Relief', 'Erosion', 'SDRF', 'Inundation', 'Hydrology',
-                    'Silt', 'Siltation', 'Bund', 'Trench', 'Breach', 'Culvert', 'Sluice', 'Dyke',
-                    'Storm water drain','Emergency','Immediate', 'IM', 'AE','A E', 'AAPDA MITRA',
-                    'flood', 'Embankment', 'Erosion',  'Hydrology', 'Silt','Dyke', 'Trench', 'Breach', 'Culvert', 'Sluice', 'Bridge', "River", "Drain",'Storm water drain' ,'Restoration','Protection','irr','irrigation','dam','Nallah','Retrofitting','Pond','Pokhari','D/C','Recharge shaft','LFB','RFB'
-                    ]
-    global NEGATIVE_KEYWORDS
-    NEGATIVE_KEYWORDS = ['Floodlight', 'Flood Light','GAS', 'FIFA', 'pipe','pipes', 'covid','supply','pipe','Beautification','Installation']
+    # ── Flood filter ──
+    results = input_df.apply(flood_filter, axis=1)
+    input_df['is_flood_tender']      = [r[0] for r in results]
+    input_df['positive_keywords_dict'] = [r[1] for r in results]
+    input_df['negative_keywords_dict'] = [r[2] for r in results]
 
-    flood_filter_tuples = input_df.apply(flood_filter,axis=1)
-    input_df.loc[:,'is_flood_tender'] = [var[0] for var in list(flood_filter_tuples)]
-    input_df.loc[:,'positive_keywords_dict'] = [var[1] for var in list(flood_filter_tuples)]
-    input_df.loc[:,'negative_keywords_dict'] = [var[2] for var in list(flood_filter_tuples)]
+    # ── Keep only flood tenders, exclude irrelevant departments ──
+    tenders_df = input_df[
+        (input_df['is_flood_tender'] == 'True') &
+        (~input_df['Department'].isin(EXCL_DEPARTMENTS))
+    ].copy()
 
-    # Removing tenders from certain departments that are not related to flood management.
-    tenders_df = input_df[(input_df.is_flood_tender=='True')&
-                                    (~input_df.Department.isin(["Directorate of Agriculture and Assam Seed Corporation","Department of Handloom Textile and Sericulture"]))]
-
-    print('Number of flood related tenders filtered: ', tenders_df.shape[0])
-    if tenders_df.shape[0]==0:
+    print(f"  Flood-related tenders : {tenders_df.shape[0]}")
+    if tenders_df.empty:
+        print("No flood tenders found — skipping.\n")
         continue
 
-    # Classify tenders based on Monsoons
-    for index, row in tenders_df.iterrows():
-        monsoon = "" 
-        published_date = dateutil.parser.parse(row['Published Date'])
-        if 3 <= published_date.month <= 5:
-            monsoon = "Pre-Monsoon"
-        elif 6 <= published_date.month <= 9:
-            monsoon = "Monsoon"
-        else:
-            monsoon = "Post-Monsoon"
-        tenders_df.loc[index, "Season"] = monsoon
+    # ── Season classification ──
+    tenders_df['Season'] = tenders_df['Published Date'].apply(classify_season)
 
-    # identify scheme related information
-    schemes_identified = []
-    scheme_kw = {'ridf','sdrf','sopd','cidf','ltif','sdmf','ndrf'}
-    for idx, row in tenders_df.iterrows():
-        tender_slug = row['tender_title']+' '+row['tender_externalreference']+' '+row['Work Description']
-        tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug).lower()
+    # ── Scheme identification ──
+    tenders_df['Scheme'] = tenders_df.apply(identify_scheme, axis=1)
 
-        tender_slug = set(re.split(r'[-.,()_\s/]\s*',tender_slug))
-        try:
-            schemes_identified.append(list(tender_slug & scheme_kw)[0].upper())
-        except:
-            schemes_identified.append('')
+    # ── Erosion flag ──
+    tenders_df['Erosion'] = tenders_df.apply(
+        lambda row: flag_keywords(make_tender_slug(row), EROSION_KW), axis=1
+    )
 
-    tenders_df.loc[:,'Scheme'] = schemes_identified
+    # ── Roads / Bridges / Embankments flag ──
+    tenders_df['Roads_Bridges_Embkt'] = tenders_df.apply(
+        lambda row: flag_keywords(make_tender_slug(row), ROADS_BRIDGES_KW), axis=1
+    )
 
-    # EROSION RELATED TENDERS
-    EROSION_KEYWORDS = ['anti erosion', 'ae', 'a/e', 'a e', 'erosion', 'eroded', 'erroded', 'errosion']
-    for index, row in tenders_df.iterrows():
-        tender_slug = str(row['tender_externalreference']) + ' ' + str(row['tender_title']) + ' ' + str(row['Work Description'])
-        tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
+    # ── Response type classification ──
+    response_results = tenders_df.apply(classify_response_type, axis=1)
+    tenders_df['Response Type']  = [r[0] for r in response_results]
+    tenders_df['Flood Response - Subhead'] = [r[1] for r in response_results]
 
-        is_present = [len(re.findall(r"\b%s\b" % kw.lower(), tender_slug.lower())) for kw in EROSION_KEYWORDS]
-        if sum(is_present)>0:
-            tenders_df.loc[index, "Erosion"] = True
-        else:
-            tenders_df.loc[index, "Erosion"] = False
-    
-    # ROADS, BRIDGES EMBANKMENTS RELATED TENDERS
-    ROADS_BRIDGES_EMBANKMENTS_KEYWORDS = ['roads', 'bridges', 'road', 'bridge', 'storm water drain' ,'drain',
-                                          'box cul', 'box culvert', 'box culv', 'culvert' ,'embankment', 'embkt',
-                                          'river bank protection', 'bund', 'bunds', 'bundh', 'bank protection', 'dyke',
-                                          'dyke wall', 'dyke walls', 'silt', 'siltation', 'sluice', 'breach']
-    for index, row in tenders_df.iterrows():
-        tender_slug = str(row['tender_externalreference']) + ' ' + str(row['tender_title']) + ' ' + str(row['Work Description'])
-        tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
+    # ── Save monthly output ──
+    out_file = os.path.join(output_path, filename)
+    tenders_df.to_csv(out_file, encoding='utf-8', index=False)
+    print(f"Saved → {out_file}")
 
-        is_present = [len(re.findall(r"\b%s\b" % kw.lower(), tender_slug.lower())) for kw in ROADS_BRIDGES_EMBANKMENTS_KEYWORDS]
-        if sum(is_present)>0:
-            tenders_df.loc[index, "Roads_Bridges_Embkt"] = True
-        else:
-            tenders_df.loc[index, "Roads_Bridges_Embkt"] = False
+    # ── Response type breakdown ──
+    print("  Response type breakdown:")
+    for rtype, count in tenders_df['Response Type'].value_counts().items():
+        print(f"    {rtype:<30} : {count}")
+    print()
 
-    #Classification of Tenders based on Response Type
-    IMMEDIATE_MEASURES_KEYWORDS = ['sdrf','im','i/m','gr','g/r','relief','package','pkt','immediate', 'emergency', 'pk', 'g.r.', 'i.m.']
-    REPAIR_RESTORATION_IMPROVEMENTS_KEYWORDS = ['improvement', 'imp.', 'impvt', 'impt.', 'repair',
-                                                'repairing', 'restoration', 'reconstruction', 'reconstn', 'recoupment',
-                                                'raising', 'strengthening', 'r/s', 'm and r', 'upgradation', 'renovation',
-                                                'repairing/renovation', 'up-gradation', 'm-r', 'm-r ', 'mr', 'widening', 'r s', 'extension',
-                                                'replacement', 're-shaping', 're-grading',
-                                                'Check Dam','Construction','Bridge','Retrofitting','Drain']
-    # PREPAREDNESS_MEASURES_KEYWORDS = ['protection','new', 'reconstruction', 'constn' ,'recoupment', 'restoration', 'embankment', 'embkt',
-    #                     'dyke','culvert','storm water', 'drainage','drain','drains','box','rcc','silt','desiltation','prosiltation',
-    #                     'anti erosion', 'erosion','a/e','ae','a e','bank protection','bank breach','breach','sludging','desludging',
-    #                     'sluice','bund','bundh', 'dam','canal','road','roads',
-    #                     'bridge','bridges','data','drone','rescue','consultation','advisory','consult','study']
 
-    PREPAREDNESS_KEYWORDS = ['shelter', 'shelters', 'tarpaulin', 'shelter ',
-                             'responder kit', 'aapda mitra volunteers','aapda mitra volunteer', 'district emergency stockpile', 'search light',
-                             'life buoys', 'boat ambulances', 'boat ambulance', 'inflatable rubber',
-                             'mechanized boats', 'mechanised boats','mechanized boat', 'mechanised boat',
-                             'per','Period','Periodical maintainance','Maintainance','Annual maintenance','Protection','scoured','Scoured bank','Recharge Shaft','De-weeding','Cleaning ','Flood Protection work']
-    for index, row in tenders_df.iterrows():
-        immedidate_measures_dict = populate_keyword_dict(IMMEDIATE_MEASURES_KEYWORDS)
-        repair_restoration_dict = populate_keyword_dict(REPAIR_RESTORATION_IMPROVEMENTS_KEYWORDS)
-        preparedness_measures_dict = populate_keyword_dict(PREPAREDNESS_KEYWORDS)
-        
-        response_type = "Others"
-        tender_slug = str(row['tender_externalreference']) + ' ' + str(row['tender_title']) + ' ' + str(row['Work Description'])
-        tender_slug = re.sub(r'[^a-zA-Z0-9 \n\.]', ' ', tender_slug)
-        
-        for keyword in immedidate_measures_dict:
-            keyword_count = len(re.findall(r"\b%s\b" % keyword.lower(), tender_slug.lower()))
-            immedidate_measures_dict[keyword] = keyword_count
-            if not keyword_count:
-                immedidate_measures_dict[keyword] =  False
-            else:
-                response_type = "Immediate Measures"
+# ─────────────────────────────────────────────────────────────
+# 4. COMBINE ALL MONTHLY FILES INTO ONE MASTER CSV
+# ─────────────────────────────────────────────────────────────
 
-        for keyword in repair_restoration_dict:
-            keyword_count = len(re.findall(r"\b%s\b" % keyword.lower(), tender_slug.lower()))
-            repair_restoration_dict[keyword] = keyword_count
-            if not keyword_count:
-                repair_restoration_dict[keyword] =  False
-            else:
-                response_type = "Repair and Restoration"
-        
-        for keyword in preparedness_measures_dict:
-            keyword_count = len(re.findall(r"\b%s\b" % keyword.lower(), tender_slug.lower()))
-            preparedness_measures_dict[keyword] = keyword_count
-            if not keyword_count:
-                preparedness_measures_dict[keyword] =  False
-            elif response_type == "Others":
-                response_type = "Preparedness Measures"
-        tenders_df.loc[index, "Response Type"] = response_type
-        
-        if response_type == "Immediate Measures":
-            sub_head_dict = {k: v for k, v in immedidate_measures_dict.items() if v is not False}
-            tenders_df.loc[index, "Flood Response - Subhead"] = str(sub_head_dict)
-        elif response_type == "Repair and Restoration":
-            sub_head_dict = {k: v for k, v in repair_restoration_dict.items() if v is not False}
-            tenders_df.loc[index, "Flood Response - Subhead"] = str(sub_head_dict) 
-        elif response_type == "Preparedness Measures":
-            sub_head_dict = {k: v for k, v in preparedness_measures_dict.items() if v is not False}
-            tenders_df.loc[index, "Flood Response - Subhead"] = str(sub_head_dict)  
+all_csvs = glob.glob(os.path.join(output_path, '*.csv'))
+dfs = []
 
-    tenders_df.to_csv(os.getcwd()+r'/Sources/TENDERS/data/flood_tenders/'+filename,
-                            encoding='utf-8',
-                            index=False)
-                            
-    
-# Add explanation for this piece of code
-data_path = os.getcwd() + r'/Sources/TENDERS/data/'
-csvs = glob.glob(data_path+r'/flood_tenders/*.csv')
-dfs=[]
-for csv in csvs:
-    csv = csv.replace("//", "/")
-    csv = csv.replace("\\", "/")
-    month = csv.split(r'/')[-1][:7]
-    df = pd.read_csv(csv)
+for csv_path in all_csvs:
+    csv_path = csv_path.replace("\\", "/")
+    month    = csv_path.split("/")[-1][:7]   # e.g. "2024_06"
+    df    = pd.read_csv(csv_path)
     df['month'] = month
     dfs.append(df)
 
-tenders_df = pd.concat(dfs)
-tenders_df.to_csv(data_path+'flood_tenders_all.csv', index=False)
+if dfs:
+    master_df = pd.concat(dfs, ignore_index=True)
+    master_path = os.path.join(os.getcwd(), 'Sources', 'TENDERS', 'data', 'flood_tenders_all.csv')
+    master_df.to_csv(master_path, index=False)
+    print(f"{'='*50}")
+    print(f"Master file saved → {master_path}")
+    print(f"   Total flood tenders : {len(master_df)}")
+    print(f"   Months covered      : {master_df['month'].nunique()}")
+    print(f"{'='*50}")
+else:
+    print("No flood tender CSVs found to combine.")
