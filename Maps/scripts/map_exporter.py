@@ -35,8 +35,13 @@ except ImportError as e:
 # CONFIGURATION - EDIT THESE VALUES
 # ============================================
 STATE_NAME = input("enter your state name :  ") 
-base_dir = os.getcwd()
-OUTPUT_DIR = os.path.join(base_dir,"/Maps/Geojson")
+
+# compute a base directory relative to this script so that the exporter
+# always writes into the repo tree regardless of the current working
+# directory 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+base_dir = os.path.abspath(os.path.join(script_dir, os.pardir))
+OUTPUT_DIR = os.path.join(base_dir, "Geojson")
 # ============================================
 
 

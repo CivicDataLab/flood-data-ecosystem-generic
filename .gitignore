@@ -10,6 +10,8 @@ river-order.geojson
 Sources/WRIS/RawData/distance-from-river/river-order.geojson
 *.zip
 *.grd
+*.xlsx
+Maps/csv/MissionAntyodaya_allIndia.csv
 
 #Don't ignore zip files in Map
 !Maps/*.zip
