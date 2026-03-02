@@ -26,15 +26,7 @@ from difflib import SequenceMatcher
 
 tenders_path = os.path.join(os.getcwd(), 'Sources', 'TENDERS', 'data', 'flood_tenders_all.csv')
 tenders_df   = pd.read_csv(tenders_path)
-
-villages_files = glob.glob(os.path.join(os.getcwd(), 'Maps', 'Geojson', '*_villages.geojson'))
-if not villages_files:
-    raise FileNotFoundError("No *_villages.geojson file found under Maps/Geojson/")
-
-vil = gpd.read_file(villages_files[0]).drop(columns='geometry', errors='ignore')
-csv_path = villages_files[0].replace('.geojson', '.csv')
-vil.to_csv(csv_path, index=False)
-
+csv_path =  glob.glob(os.path.join(os.getcwd(),'Maps/csv/*_villages.csv'))
 OD_VILLAGES = pd.read_csv(csv_path, encoding='utf-8').dropna()
 print(f"Villages loaded  →  {OD_VILLAGES.shape[0]} rows | saved at: {csv_path}")
 

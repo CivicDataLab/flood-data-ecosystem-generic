@@ -1,4 +1,4 @@
-# Map Exporter - NIC Admin Boundaries Downloader
+# Map Transformer - NIC Admin Boundaries Downloader
 
 ## Overview
 
@@ -45,27 +45,34 @@ pip install geopandas requests
 
 ## Usage
 
-### Basic Usage
+This tool is part of a two-step pipeline:
+
+### Step 1 — Download Boundaries
+Run `map_exporter.py` to download the raw administrative boundary GeoJSONs from the NIC server:
 ```bash
 python map_exporter.py --state "Assam"
 ```
 
-### Specify Output Directory
+Specify a custom output directory:
 ```bash
-python download_boundaries.py --state "Bihar" --outdir /path/to/output
+python map_exporter.py --state "Bihar" --outdir /path/to/output
 ```
 
-### Configuration in Script
-
-Alternatively, edit the configuration section in the script:
- Run simply:
+Alternatively, edit the configuration section in the script and run:
 ```bash
 python map_exporter.py
 ```
 
+### Step 2 — Transform & Process
+Once the GeoJSONs are downloaded, run `map_transformer.py` to process and export the final CSV and filtered GeoJSON outputs:
+```bash
+python map_transformer.py
+```
+
 ## Output Files
 
-The script generates 4 GeoJSON files per state:
+### `map_exporter.py` — Raw Downloads
+Generates 4 GeoJSON files per state:
 
 | File Name | Description | Layer |
 |-----------|-------------|-------|
@@ -74,13 +81,28 @@ The script generates 4 GeoJSON files per state:
 | `{state}_subdistricts.geojson` | All subdistricts/blocks within state | Layer 11 |
 | `{state}_villages.geojson` | All villages within state | Layer 12 |
 
-**Example for Assam:**
 ```
 Maps/Geojson/
 ├── assam_state.geojson
 ├── assam_districts.geojson
 ├── assam_subdistricts.geojson
 └── assam_villages.geojson
+```
+
+### `map_transformer.py` — Processed Outputs
+Generates 2 output files per state:
+
+| File Name | Location | Description |
+|-----------|----------|-------------|
+| `{state}_urban.geojson` | `Maps/Geojson/` | Urban villages (CT, OG, and statutory town types) filtered from the village layer |
+| `{state}_villages.csv` | `Maps/csv/` | All villages as a flat CSV — geometry column removed |
+
+```
+Maps/
+├── Geojson/
+│   └── assam_urban.geojson
+└── csv/
+    └── assam_villages.csv
 ```
 
 ## Valid State Names
@@ -201,4 +223,3 @@ SUCCESS! All files downloaded:
 | Villages | 1,000-50,000 | 2-15 minutes |
 
 **Note:** Village-level data may take longer for large states due to high feature counts.
-

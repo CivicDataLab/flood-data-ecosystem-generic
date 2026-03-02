@@ -28,7 +28,7 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────────────────────
 
 # Villages CSV (converted from GeoJSON in the previous script)
-vil_path = glob.glob(os.path.join(os.getcwd(), 'Maps', 'Geojson', '*.csv'))
+vil_path = glob.glob(os.path.join(os.getcwd(), 'Maps', 'Geojson', '*_villages.csv'))
 if not vil_path:
     raise FileNotFoundError("No CSV found under Maps/Geojson/ — run geocode_tenders.py first.")
 OD_VILLAGES = pd.read_csv(vil_path[0], encoding='utf-8').dropna()

@@ -34,8 +34,7 @@ output_vul = os.path.join(
     base_dir, f"Sources/ANTYODAYA/data/MissionAntyodaya2020_{state_code}_vul.csv"
 )
 
-urban_shape_file = os.path.join(
-    base_dir, f"Sources/ANTYODAYA/data/{state_code}_urban_shapes/{state_code}_urban_pd_grt_2000.shp"
+urban_shape_file = glob.glob(os.path.join(base_dir,"Maps/Geojson/*_urban.geojson")
 )
 
 worldpop_raster_file = os.path.join(
@@ -381,7 +380,7 @@ def build_rc_level_vulnerability_variables(
 
 
 # ---------------------------------------------------------
-# 3. MAIN
+# 3. MAIN PIPELINE
 # ---------------------------------------------------------
 
 def main():

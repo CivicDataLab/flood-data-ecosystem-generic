@@ -12,20 +12,20 @@ geojsons = glob.glob(os.path.join(base_dir, "Geojson", "*.geojson"))
 fname = os.path.basename(geojsons[0])
 state = os.path.splitext(fname)[0].split('_')[0]
 
-#export villages csv
+# export villages csv
 villages_geojson = os.path.join(base_dir, "Geojson", f"{state}_villages.geojson")
 villages_gdf = gpd.read_file(villages_geojson)
 
-# build path for the villages geojson of the current state
+# build path for the districts geojson of the current state
 district_geojson = os.path.join(base_dir, "Geojson", f"{state}_districts.geojson")
 district = gpd.read_file(district_geojson)
-district["object_id"] = district["stcode11"] +"-"+ district["dtcode11"] 
-district.to_file(base_dir + r'/csv/kerala_districts.csv', driver="GeoJSON")
+district["object_id"] = district["stcode11"] + "-" + district["dtcode11"]
+district.to_file(os.path.join(base_dir, "csv", f"{state}_districts.csv"), driver="GeoJSON")  # Fix 1
 
 subdistrict_geojson = os.path.join(base_dir, "Geojson", f"{state}_subdistricts.geojson")
 subdistrict = gpd.read_file(subdistrict_geojson)
-subdistrict["object_id"] = subdistrict["stcode11"] +"-"+ subdistrict["dtcode11"] + "-"+ subdistrict["sdtcode11"]
-subdistrict.to_file(base_dir + r'/csv/kerala_subdistricts.csv', driver="GeoJSON")
+subdistrict["object_id"] = subdistrict["stcode11"] + "-" + subdistrict["dtcode11"] + "-" + subdistrict["sdtcode11"]
+subdistrict.to_file(os.path.join(base_dir, "csv", f"{state}_subdistricts.csv"), driver="GeoJSON")  # Fix 2
 
 
 ### Prepare urban shapefile
@@ -63,5 +63,4 @@ print(f"Total          : {len(village_urban)}")
 urban_gdf.to_file(os.path.join(base_dir, "Geojson", f"{state}_urban.geojson"), driver="GeoJSON")
 
 villages_csv = villages_gdf.drop(columns=['geometry'])
-villages_csv.to_csv(base_dir + r'/csv/kerala_villages.csv', index=False)
-
+villages_csv.to_csv(os.path.join(base_dir, "csv", f"{state}_villages.csv"), index=False)  # Fix 3
